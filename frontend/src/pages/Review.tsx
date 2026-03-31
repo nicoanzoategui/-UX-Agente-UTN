@@ -189,7 +189,7 @@ export default function Review() {
                             </div>
 
                             {/* Preview del diseño */}
-                            <div className="bg-white border border-[#DFE1E6] rounded-[3px] shadow-sm overflow-hidden">
+                            <div className="bg-white border border-[#DFE1E6] rounded-[3px] shadow-sm overflow-hidden" style={{ minHeight: 600 }}>
                                 <WireframePreview
                                     content={pendingOutput.content}
                                     type={pendingOutput.content_type}

@@ -11,13 +11,48 @@ export default function WireframePreview({ content, type }: Props) {
     const [hiFiTab, setHiFiTab] = useState<'preview' | 'code'>('preview');
 
     if (type === 'svg' || content.trim().startsWith('<svg')) {
+        const parts = content.split('---DESKTOP---');
+        const desktopSvg = parts.length === 2 ? parts[0].trim() : content.trim();
+        const mobileSvg = parts.length === 2 ? parts[1].trim() : content.trim();
         return (
-            <div className="bg-[#F4F5F7] rounded-[3px] p-8 overflow-auto max-h-[700px] flex justify-center border border-[#DFE1E6]">
-                <div
-                    className="bg-white shadow-xl rounded-sm p-4 w-full"
-                    style={{ maxWidth: '375px' }}
-                    dangerouslySetInnerHTML={{ __html: content }}
-                />
+            <div className="bg-[#F4F5F7] rounded-[3px] p-6 border border-[#DFE1E6] space-y-6">
+
+                {/* Desktop */}
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <div className="flex gap-1.5">
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F57]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#28C840]" />
+                        </div>
+                        <span className="text-[10px] uppercase font-bold text-[#7A869A] tracking-widest">Desktop — 1440px</span>
+                    </div>
+                    <div className="bg-white border border-[#DFE1E6] rounded-[3px] shadow-sm overflow-auto">
+                        <div
+                            className="w-full origin-top-left"
+                            style={{ minWidth: '1440px', padding: '24px' }}
+                            dangerouslySetInnerHTML={{ __html: content }}
+                        />
+                    </div>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-[#DFE1E6]" />
+
+                {/* Mobile */}
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase font-bold text-[#7A869A] tracking-widest">Mobile — 375px</span>
+                    </div>
+                    <div className="flex justify-center">
+                        <div
+                            className="bg-white border border-[#DFE1E6] rounded-[3px] shadow-sm overflow-auto"
+                            style={{ width: '375px' }}
+                            dangerouslySetInnerHTML={{ __html: content }}
+                        />
+                    </div>
+                </div>
+
             </div>
         );
     }
@@ -51,7 +86,7 @@ export default function WireframePreview({ content, type }: Props) {
                 <Suspense
                     fallback={
                         <div className="flex items-center justify-center min-h-[320px] bg-[#F4F5F7] rounded-[3px] border border-[#DFE1E6] text-sm text-[#5E6C84]">
-                            Cargando vista previa interactiva…
+                            Cargando vista previa interactiva...
                         </div>
                     }
                 >
