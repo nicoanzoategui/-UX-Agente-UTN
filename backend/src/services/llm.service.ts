@@ -1,5 +1,3 @@
-// backend/src/services/llm.service.ts
-
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { EnhancedGenerateContentResponse } from '@google/generative-ai';
 import { config } from '../config/env.js';
@@ -9,7 +7,6 @@ const genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY || '');
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Google suele incluir "Please retry in 52.06s" en el cuerpo del 429. */
 function parseRetryAfterSeconds(message: string): number | null {
     const m = message.match(/retry\s+in\s+([\d.]+)\s*s/i);
     if (m) return Math.ceil(parseFloat(m[1]));
@@ -25,7 +22,6 @@ function isRateLimitError(message: string): boolean {
     );
 }
 
-/** Cuota diaria / modelo sin cupo en free tier: reintentar no ayuda. */
 function looksLikeQuotaHardStop(message: string): boolean {
     return (
         /limit:\s*0\b/i.test(message) &&
@@ -36,31 +32,34 @@ function looksLikeQuotaHardStop(message: string): boolean {
 function extractGeminiText(response: EnhancedGenerateContentResponse, modelId: string): string {
     const feedback = response.promptFeedback;
     if (feedback?.blockReason) {
-        throw new Error(
-            `Gemini bloqueó el prompt (${modelId}): blockReason=${feedback.blockReason}`
-        );
+        throw new Error(`Gemini bloqueó el prompt (${modelId}): blockReason=${feedback.blockReason}`);
     }
-
     const candidates = response.candidates;
     if (!candidates?.length) {
-        throw new Error(
-            `Gemini no devolvió candidatos (${modelId}). promptFeedback=${JSON.stringify(feedback ?? null)}`
-        );
+        throw new Error(`Gemini no devolvió candidatos (${modelId}). promptFeedback=${JSON.stringify(feedback ?? null)}`);
     }
-
     const finish = candidates[0]?.finishReason;
     if (finish && finish !== 'STOP' && finish !== 'MAX_TOKENS') {
         console.warn(`Gemini finishReason=${finish} (model=${modelId})`);
     }
-
     try {
         return response.text();
     } catch (e: unknown) {
         const hint = (e as Error)?.message || String(e);
-        throw new Error(
-            `Gemini no entregó texto (${modelId}): ${hint}. finishReason=${finish ?? 'n/a'}`
-        );
+        throw new Error(`Gemini no entregó texto (${modelId}): ${hint}. finishReason=${finish ?? 'n/a'}`);
     }
+}
+
+export interface DesignMeta {
+    layout: string;
+    components: string[];
+    decisions: string[];
+    states: Record<string, boolean>;
+}
+
+export interface DesignResult {
+    content: string;
+    meta?: DesignMeta;
 }
 
 export async function generateDesign(
@@ -68,33 +67,20 @@ export async function generateDesign(
     level: 1 | 2 | 3,
     feedback?: string,
     previousDesign?: string
-): Promise<string> {
+): Promise<DesignResult> {
     const key = config.GEMINI_API_KEY?.trim();
-    if (!key) {
-        throw new Error('GEMINI_API_KEY no está definida o está vacía en el entorno del backend.');
-    }
+    if (!key) throw new Error('GEMINI_API_KEY no está definida o está vacía.');
 
     const modelId = config.GEMINI_MODEL;
     const model = genAI.getGenerativeModel({
         model: modelId,
-        generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 8192,
-        }
+        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
     });
 
     const prompt = getPromptForLevel(level, userStory, feedback, previousDesign);
-
     const history = [
         { role: 'user' as const, parts: [{ text: SYSTEM_PROMPT }] },
-        {
-            role: 'model' as const,
-            parts: [
-                {
-                    text: 'Entendido. Estoy listo para generar diseños UX/UI siguiendo todas las reglas y principios establecidos.',
-                },
-            ],
-        },
+        { role: 'model' as const, parts: [{ text: 'Entendido. Estoy listo para generar diseños UX/UI siguiendo todas las reglas y principios establecidos.' }] },
     ];
 
     const maxAttempts = 4;
@@ -110,26 +96,14 @@ export async function generateDesign(
             lastMsg = (e as Error)?.message || String(e);
             const hint =
                 `Fallo la llamada a Gemini (${modelId}): ${lastMsg}\n\n` +
-                `Si ves 429 o cuota: probá GEMINI_MODEL=gemini-2.5-flash o gemini-2.5-flash-lite en backend/.env, ` +
-                `confirmá que la API key sea del proyecto Cloud con facturación, y revisá https://aistudio.google.com/`;
+                `Si ves 429 o cuota: probá GEMINI_MODEL=gemini-2.5-flash en backend/.env.`;
 
-            if (!isRateLimitError(lastMsg) || attempt === maxAttempts) {
-                throw new Error(hint);
-            }
-
-            if (looksLikeQuotaHardStop(lastMsg)) {
-                throw new Error(
-                    `${hint}\n\n` +
-                        `Parece límite de cuota agotado o cupo 0 en free tier para este modelo. ` +
-                        `Cambiá de modelo o habilitá uso de pago en el proyecto correcto.`
-                );
-            }
+            if (!isRateLimitError(lastMsg) || attempt === maxAttempts) throw new Error(hint);
+            if (looksLikeQuotaHardStop(lastMsg)) throw new Error(`${hint}\n\nCuota agotada.`);
 
             const sec = parseRetryAfterSeconds(lastMsg) ?? 55;
             const waitMs = Math.min(Math.max(sec * 1000, 3000), 120_000);
-            console.warn(
-                `Gemini rate limit (${modelId}), intento ${attempt}/${maxAttempts}, esperando ${Math.round(waitMs / 1000)}s…`
-            );
+            console.warn(`Gemini rate limit, intento ${attempt}/${maxAttempts}, esperando ${Math.round(waitMs / 1000)}s…`);
             await sleep(waitMs);
         }
     }
@@ -137,26 +111,31 @@ export async function generateDesign(
     throw new Error(`Gemini: agotados los reintentos (${modelId}). Último error: ${lastMsg}`);
 }
 
-function extractDesignContent(response: string, level: number): string {
+function extractDesignContent(response: string, level: number): DesignResult {
     if (level === 3) {
-        // Extraer código TSX
         const codeMatch = response.match(/```(?:tsx?|jsx?|typescript|javascript)?\n([\s\S]*?)```/);
-        if (codeMatch) return codeMatch[1].trim();
+        const content = codeMatch
+            ? codeMatch[1].trim()
+            : (response.match(/((?:export\s+)?(?:default\s+)?function\s+\w+[\s\S]*)/))?.[1]?.trim() ?? response;
 
-        // Si no hay backticks, buscar el componente directamente
-        const componentMatch = response.match(/((?:export\s+)?(?:default\s+)?function\s+\w+[\s\S]*)/);
-        if (componentMatch) return componentMatch[1].trim();
+        let meta: DesignMeta | undefined;
+        const jsonMatch = response.match(/```json\n([\s\S]*?)```/);
+        if (jsonMatch) {
+            try {
+                meta = JSON.parse(jsonMatch[1].trim());
+            } catch {
+                console.warn('No se pudo parsear el bloque JSON de metadatos');
+            }
+        }
 
-        return response;
+        return { content, meta };
     } else {
-        // Extraer SVG
         const svgMatch = response.match(/<svg[\s\S]*?<\/svg>/);
-        if (svgMatch) return svgMatch[0];
+        if (svgMatch) return { content: svgMatch[0] };
 
-        // Si viene en backticks
         const codeMatch = response.match(/```(?:svg|xml)?\n([\s\S]*?)```/);
-        if (codeMatch) return codeMatch[1].trim();
+        if (codeMatch) return { content: codeMatch[1].trim() };
 
-        return response;
+        return { content: response };
     }
 }
