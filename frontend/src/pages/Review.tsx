@@ -64,7 +64,7 @@ export default function Review() {
             .sort((a: any, b: any) => b.version - a.version)[0]
         : pendingOutput;
     const shownOutput = activeOutput || pendingOutput;
-    const parsedDescription = parseStoryDescription(story.description || '');
+    const parsedDescription = parseStoryDescription(story?.description || '');
     const isGenerating =
         story &&
         (Number((story as any).is_generating) === 1 || (story as any).is_generating === true);
