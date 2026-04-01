@@ -43,8 +43,10 @@ const BASE_DEPS: Record<string, string> = {
 function extractDependencies(code: string): Record<string, string> {
     const deps: Record<string, string> = {
         '@mui/material': BASE_DEPS['@mui/material'],
+        '@mui/icons-material': BASE_DEPS['@mui/icons-material'],
         '@emotion/react': BASE_DEPS['@emotion/react'],
         '@emotion/styled': BASE_DEPS['@emotion/styled'],
+        '@mui/x-data-grid': BASE_DEPS['@mui/x-data-grid'],
     };
     const matches = code.matchAll(/(?:from\s+|import\s+['"])([^'"]+)['"]/g);
     for (const m of matches) {
@@ -59,10 +61,12 @@ function extractDependencies(code: string): Record<string, string> {
 export default function HiFiSandpackPreview({ code }: Props) {
     const appCode = prepareAppTsx(code);
     const dependencies = extractDependencies(appCode);
+    const sandpackKey = `${Object.keys(dependencies).sort().join(',')}::${appCode.length}`;
 
     return (
         <div className="hi-fi-sandpack rounded-[3px] overflow-hidden border border-[#DFE1E6] bg-white">
             <SandpackProvider
+                key={sandpackKey}
                 template="react-ts"
                 theme="light"
                 files={{
