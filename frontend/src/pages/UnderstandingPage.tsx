@@ -76,6 +76,8 @@ export default function UnderstandingPage() {
     const [fileModalOpen, setFileModalOpen] = useState(false);
     const [stagingFiles, setStagingFiles] = useState<File[]>([]);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [apiSpecFile, setApiSpecFile] = useState<File | null>(null);
+    const apiSpecInputRef = useRef<HTMLInputElement>(null);
 
     const persistDraft = useCallback(() => {
         try {
@@ -238,6 +240,7 @@ export default function UnderstandingPage() {
             for (const s of screenshots) {
                 if (s.file) fd.append('screenshots', s.file);
             }
+            if (apiSpecFile) fd.append('apiSpec', apiSpecFile);
             const { analysis } = await api.analyzeUnderstanding(fd);
             navigate('/analisis', {
                 state: {
@@ -403,6 +406,52 @@ export default function UnderstandingPage() {
                                     Puedes cargar PDFs, Word, TXT, transcripciones y documentación técnica
                                 </p>
                             </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Especificación de API (opcional)
+                        </label>
+                        <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 flex flex-col sm:flex-row sm:items-center gap-3">
+                            <input
+                                ref={apiSpecInputRef}
+                                type="file"
+                                accept=".json,.yaml,.yml,.md,.markdown,.txt,application/json,text/yaml,application/x-yaml"
+                                className="sr-only"
+                                onChange={(e) => {
+                                    const f = e.target.files?.[0] ?? null;
+                                    setApiSpecFile(f);
+                                    e.target.value = '';
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => apiSpecInputRef.current?.click()}
+                                className="px-4 py-2 border border-purple-600 text-purple-700 rounded-lg text-sm font-semibold hover:bg-purple-50 ux-focus shrink-0"
+                            >
+                                Elegir archivo
+                            </button>
+                            <div className="min-w-0 flex-1 text-sm text-gray-600">
+                                {apiSpecFile ? (
+                                    <span className="text-gray-900 font-medium break-all">{apiSpecFile.name}</span>
+                                ) : (
+                                    <span>
+                                        Swagger/OpenAPI en JSON o YAML, o Markdown con endpoints. Se usará para listar
+                                        <code className="mx-1 text-xs bg-gray-200 px-1 rounded">availableEndpoints</code> en el
+                                        análisis.
+                                    </span>
+                                )}
+                            </div>
+                            {apiSpecFile && (
+                                <button
+                                    type="button"
+                                    onClick={() => setApiSpecFile(null)}
+                                    className="text-sm text-red-600 hover:underline ux-focus shrink-0"
+                                >
+                                    Quitar
+                                </button>
+                            )}
                         </div>
                     </div>
 

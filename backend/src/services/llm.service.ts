@@ -19,6 +19,8 @@ import {
     UNDERSTANDING_ANALYSIS_SYSTEM,
     buildUnderstandingAnalysisUserPrompt,
 } from '../prompts/understanding-analysis.js';
+import { HANDOFF_BUNDLE_SYSTEM } from '../prompts/handoff-zip-prompts.js';
+import JSZip from 'jszip';
 import {
     IDEATION_SOLUTIONS_SYSTEM,
     buildIdeationUserPrompt,
@@ -33,6 +35,16 @@ import {
     PROTOTYPE_ITERATION_SYSTEM,
     buildPrototypeIterationUserPrompt,
 } from '../prompts/prototype-flow-prompts.js';
+import {
+    FULL_FLOW_HIFI_HTML_SYSTEM,
+    TSX_MUI_SCREENS_SYSTEM,
+    USER_FLOW_CHAT_SYSTEM,
+    USER_FLOW_SVG_SYSTEM,
+    buildFullFlowHifiUserPrompt,
+    buildTsxMuiUserPrompt,
+    buildUserFlowChatUserPrompt,
+    buildUserFlowSvgUserPrompt,
+} from '../prompts/platform-post-prototype-prompts.js';
 
 const genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY || '');
 
@@ -441,6 +453,13 @@ export type UnderstandingAnalysisAttachment = {
     mimeType: string;
 };
 
+/** Endpoint HTTP inferido o leído desde OpenAPI/Swagger en Entendimiento. */
+export type ApiEndpointDescriptor = {
+    method: string;
+    path: string;
+    summary?: string;
+};
+
 export type UnderstandingAnalysisResult = {
     executiveSummary: string;
     contextSynthesis: string;
@@ -451,6 +470,8 @@ export type UnderstandingAnalysisResult = {
     risksAndConstraints: string[];
     openQuestions: string[];
     suggestedFocusForIdeation: string;
+    /** Presente cuando se adjuntó spec de API y el modelo extrajo operaciones. */
+    availableEndpoints?: ApiEndpointDescriptor[];
 };
 
 const UNDERSTANDING_MAX_TEXT = 120_000;
@@ -472,11 +493,18 @@ function guessAttachmentMime(file: UnderstandingAnalysisAttachment): string {
     if (n.endsWith('.webp')) return 'image/webp';
     if (n.endsWith('.gif')) return 'image/gif';
     if (n.endsWith('.md') || n.endsWith('.txt')) return 'text/plain; charset=utf-8';
+    if (n.endsWith('.yaml') || n.endsWith('.yml')) return 'text/yaml; charset=utf-8';
     return file.mimeType || 'application/octet-stream';
 }
 
 function isUtf8TextMime(mime: string): boolean {
-    return mime.startsWith('text/') || mime === 'application/json';
+    return (
+        mime.startsWith('text/') ||
+        mime === 'application/json' ||
+        mime === 'application/x-yaml' ||
+        mime === 'text/yaml' ||
+        mime === 'application/yaml'
+    );
 }
 
 export function parseUnderstandingAnalysisJson(raw: string): UnderstandingAnalysisResult {
@@ -499,7 +527,7 @@ export function parseUnderstandingAnalysisJson(raw: string): UnderstandingAnalys
         Array.isArray(parsed[k])
             ? (parsed[k] as unknown[]).filter((x) => typeof x === 'string').map((x) => (x as string).trim())
             : [];
-    return {
+    const base: UnderstandingAnalysisResult = {
         executiveSummary: str('executiveSummary') || 'Sin resumen ejecutivo.',
         contextSynthesis: str('contextSynthesis') || '',
         businessObjectives: arr('businessObjectives'),
@@ -510,6 +538,21 @@ export function parseUnderstandingAnalysisJson(raw: string): UnderstandingAnalys
         openQuestions: arr('openQuestions'),
         suggestedFocusForIdeation: str('suggestedFocusForIdeation') || '',
     };
+    const rawEp = parsed.availableEndpoints;
+    if (Array.isArray(rawEp) && rawEp.length > 0) {
+        const availableEndpoints: ApiEndpointDescriptor[] = [];
+        for (const item of rawEp) {
+            if (!item || typeof item !== 'object') continue;
+            const o = item as Record<string, unknown>;
+            const method = typeof o.method === 'string' ? o.method.trim().toUpperCase() : '';
+            const path = typeof o.path === 'string' ? o.path.trim() : '';
+            const summary = typeof o.summary === 'string' ? o.summary.trim() : undefined;
+            if (!method || !path) continue;
+            availableEndpoints.push({ method, path, ...(summary ? { summary } : {}) });
+        }
+        if (availableEndpoints.length > 0) base.availableEndpoints = availableEndpoints;
+    }
+    return base;
 }
 
 export async function generateUnderstandingAnalysis(input: {
@@ -520,6 +563,8 @@ export async function generateUnderstandingAnalysis(input: {
     fileManifest: { name: string; tag: string; sizeBytes?: number }[];
     contextFiles: UnderstandingAnalysisAttachment[];
     screenshots: UnderstandingAnalysisAttachment[];
+    /** OpenAPI/Swagger/Markdown de API (opcional). */
+    apiSpec?: UnderstandingAnalysisAttachment | null;
 }): Promise<UnderstandingAnalysisResult> {
     const key = config.GEMINI_API_KEY?.trim();
     if (!key) throw new Error('GEMINI_API_KEY no está definida o está vacía.');
@@ -570,6 +615,25 @@ export async function generateUnderstandingAnalysis(input: {
                 data: f.buffer.toString('base64'),
             },
         });
+    }
+
+    if (input.apiSpec && input.apiSpec.buffer.length > 0) {
+        const f = input.apiSpec;
+        const mime = guessAttachmentMime(f);
+        const name = f.originalName || 'api-spec';
+        parts.push({ text: '\n\n--- Especificación de API (OpenAPI/Swagger/Markdown) ---\n' });
+        if (isUtf8TextMime(mime) || /\.(txt|md|markdown|json|ya?ml)$/i.test(name)) {
+            const txt = truncateUnderstandingText(f.buffer.toString('utf-8'));
+            parts.push({ text: `### ${name}\n${txt}\n` });
+        } else {
+            parts.push({ text: `\n[Documento API: ${name}]\n` });
+            parts.push({
+                inlineData: {
+                    mimeType: mime,
+                    data: f.buffer.toString('base64'),
+                },
+            });
+        }
     }
 
     const maxAttempts = 4;
@@ -817,6 +881,14 @@ export type PrototypeScreenSpecDto = {
     cta?: string;
 };
 
+/** Pantallas lógicas derivadas solo de la solución de ideación (sin prototipo previo). */
+export function pseudoScreensFromIdeationSolution(solution: IdeationSolutionDto): PrototypeScreenSpecDto[] {
+    return solution.flowSteps.map((text, i) => ({
+        title: text.trim().slice(0, 200) || `Paso ${i + 1}`,
+        subtitle: solution.title.trim().slice(0, 160),
+    }));
+}
+
 export type PrototypeFlowResultDto = {
     summaryLine: string;
     screens: PrototypeScreenSpecDto[];
@@ -977,4 +1049,448 @@ export async function generatePrototypeIterationReply(input: {
         maxOutputTokens: 4096,
     });
     return reply.trim();
+}
+
+function extractFirstSvg(raw: string): string {
+    const t = raw.trim();
+    const m = t.match(/<svg[\s\S]*?<\/svg>/i);
+    if (m) return m[0];
+    const code = t.match(/```(?:svg|xml)?\s*([\s\S]*?)```/i);
+    if (code) {
+        const inner = code[1].trim();
+        const m2 = inner.match(/<svg[\s\S]*?<\/svg>/i);
+        if (m2) return m2[0];
+    }
+    throw new Error('El modelo no devolvió un SVG de user flow válido.');
+}
+
+function escapeSvgText(s: string): string {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+/** SVG mínimo en línea cuando Gemini no devuelve markup válido. */
+function buildFallbackUserFlowSvg(solution: IdeationSolutionDto): string {
+    const steps = solution.flowSteps.filter((x) => x.trim().length > 0);
+    const labels = steps.length > 0 ? steps : ['Paso sin definir'];
+    const n = labels.length;
+    const boxW = 220;
+    const gap = 40;
+    const startX = 32;
+    const yBox = 72;
+    const boxH = 76;
+    const vbW = startX * 2 + n * boxW + Math.max(0, n - 1) * gap;
+    const vbH = 220;
+    const title = escapeSvgText(solution.title.trim().slice(0, 100) || 'User flow');
+
+    const markerId = `arrow-uf-fb-${Math.random().toString(36).slice(2, 9)}`;
+    const parts: string[] = [
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vbW} ${vbH}" width="${vbW}" height="${vbH}">`,
+        '<defs>',
+        `<marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#475569"/></marker>`,
+        '</defs>',
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        `<text x="24" y="40" font-size="15" font-weight="600" fill="#334155" font-family="system-ui,sans-serif">${title}</text>`,
+        `<text x="24" y="58" font-size="11" fill="#64748b" font-family="system-ui,sans-serif">${escapeSvgText('Diagrama de respaldo — revisar con el agente o regenerar.')}</text>`,
+    ];
+
+    for (let i = 0; i < n; i++) {
+        const x = startX + i * (boxW + gap);
+        const label = escapeSvgText(labels[i].trim().slice(0, 120));
+        parts.push(
+            `<rect x="${x}" y="${yBox}" width="${boxW}" height="${boxH}" rx="12" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>`,
+            `<text x="${x + boxW / 2}" y="${yBox + boxH / 2 + 4}" text-anchor="middle" font-size="13" fill="#0f172a" font-family="system-ui,sans-serif">${label}</text>`
+        );
+        if (i < n - 1) {
+            const x1 = x + boxW;
+            const x2 = x + boxW + gap;
+            const ym = yBox + boxH / 2;
+            parts.push(
+                `<line x1="${x1}" y1="${ym}" x2="${x2 - 2}" y2="${ym}" stroke="#475569" stroke-width="2" marker-end="url(#${markerId})"/>`
+            );
+        }
+    }
+    parts.push('</svg>');
+    return parts.join('\n');
+}
+
+function splitDelimitedBlocks(raw: string, kind: 'SCREEN' | 'TSX'): string[] {
+    const re = new RegExp(`---${kind}_(\\d+)---`, 'gi');
+    const parts = raw.trim().split(re);
+    const blocks: string[] = [];
+    for (let i = 2; i < parts.length; i += 2) {
+        const chunk = parts[i]?.trim();
+        if (chunk) blocks.push(chunk);
+    }
+    return blocks;
+}
+
+/** Diagrama de user flow (SVG) a partir del spec de plataforma + solución aprobada. */
+export async function generateUserFlow(
+    specMarkdown: string,
+    solution: IdeationSolutionDto,
+    opts?: { feedback?: string; priorSvg?: string }
+): Promise<string> {
+    const user = buildUserFlowSvgUserPrompt({
+        specMarkdown,
+        solutionJson: JSON.stringify(solution).slice(0, 24_000),
+        feedback: opts?.feedback,
+        priorSvg: opts?.priorSvg,
+    });
+    const raw = await generateTextWithRetries(USER_FLOW_SVG_SYSTEM, user, 0.35, { maxOutputTokens: 16_384 });
+    const logPreview = 5000;
+    console.log(
+        '[generateUserFlow] respuesta Gemini (preview, primeros',
+        logPreview,
+        'chars):\n',
+        raw.slice(0, logPreview),
+        raw.length > logPreview ? '\n… [log truncado] …' : '',
+        '\n[generateUserFlow] longitud total (chars):',
+        raw.length
+    );
+    try {
+        return extractFirstSvg(raw);
+    } catch (e1) {
+        console.warn('[generateUserFlow] extractFirstSvg (1.er intento):', (e1 as Error)?.message ?? e1);
+        const repair =
+            `${user}\n\n## Corrección requerida\nLa respuesta anterior no incluyó un único SVG válido (exactamente un bloque desde <svg hasta </svg>). Emití de nuevo **solo** ese fragmento, sin markdown ni texto fuera del SVG.`;
+        const raw2 = await generateTextWithRetries(USER_FLOW_SVG_SYSTEM, repair, 0.2, { maxOutputTokens: 16_384 });
+        console.log(
+            '[generateUserFlow] respuesta Gemini 2º intento (preview, primeros',
+            logPreview,
+            'chars):\n',
+            raw2.slice(0, logPreview),
+            raw2.length > logPreview ? '\n… [log truncado] …' : '',
+            '\n[generateUserFlow] longitud total 2º intento:',
+            raw2.length
+        );
+        try {
+            return extractFirstSvg(raw2);
+        } catch (e2) {
+            console.warn(
+                '[generateUserFlow] extractFirstSvg (2º intento) falló; se usa SVG de respaldo. Motivo:',
+                (e2 as Error)?.message ?? e2
+            );
+            return buildFallbackUserFlowSvg(solution);
+        }
+    }
+}
+
+export async function iterateUserFlowChat(input: {
+    specMarkdown: string;
+    solution: IdeationSolutionDto;
+    currentSvg: string;
+    history: { role: 'user' | 'assistant'; text: string }[];
+    userMessage: string;
+}): Promise<string> {
+    const hist = input.history
+        .slice(-12)
+        .map((h) => `${h.role === 'user' ? 'Usuario' : 'Agente'}: ${h.text}`)
+        .join('\n');
+    const user = buildUserFlowChatUserPrompt({
+        specMarkdown: input.specMarkdown,
+        solutionJson: JSON.stringify(input.solution).slice(0, 16_000),
+        currentSvgSnippet: input.currentSvg.slice(0, 12_000),
+        historyLines: hist,
+        userMessage: input.userMessage,
+    });
+    const reply = await generateTextWithRetries(USER_FLOW_CHAT_SYSTEM, user, 0.45, { maxOutputTokens: 2048 });
+    return reply.trim();
+}
+
+/** Wireframes HiFi (HTML) de todas las pantallas, delimitados ---SCREEN_N---. */
+export async function generateFullFlowWireframes(
+    specMarkdown: string,
+    solution: IdeationSolutionDto,
+    opts?: { feedback?: string }
+): Promise<string> {
+    const screens = pseudoScreensFromIdeationSolution(solution);
+    const user = buildFullFlowHifiUserPrompt({
+        specMarkdown,
+        screensJson: JSON.stringify(screens).slice(0, 24_000),
+        feedback: opts?.feedback,
+    });
+    const raw = await generateTextWithRetries(FULL_FLOW_HIFI_HTML_SYSTEM, user, 0.35, { maxOutputTokens: 24_576 });
+    const blocks = splitDelimitedBlocks(raw, 'SCREEN');
+    if (blocks.length === 0) {
+        throw new Error('El modelo no devolvió bloques ---SCREEN_N--- parseables.');
+    }
+    return raw.trim();
+}
+
+/** Código TSX con MUI v5 por pantalla, delimitado ---TSX_N---. */
+export async function generateTsxMuiScreens(
+    specMarkdown: string,
+    hifiHtmlScreens: string[],
+    opts?: { feedback?: string }
+): Promise<string[]> {
+    if (!hifiHtmlScreens.length) throw new Error('Faltan wireframes HiFi para generar TSX.');
+    const joined = hifiHtmlScreens
+        .map((html, i) => `### Pantalla ${i + 1}\n${html}`)
+        .join('\n\n')
+        .slice(0, 120_000);
+    const fb = opts?.feedback?.trim();
+    const user =
+        buildTsxMuiUserPrompt({ specMarkdown, screensHtmlJoined: joined }) +
+        (fb ? `\n\n## Feedback del usuario para esta iteración\n${fb.slice(0, 8000)}` : '');
+    const raw = await generateTextWithRetries(TSX_MUI_SCREENS_SYSTEM, user, 0.25, { maxOutputTokens: 24_576 });
+    const blocks = splitDelimitedBlocks(raw, 'TSX');
+    if (blocks.length === 0) {
+        throw new Error('El modelo no devolvió bloques ---TSX_N--- parseables.');
+    }
+    return blocks;
+}
+
+// --- Handoff ZIP (README, theme, routes, endpoints + pantallas + SVG) ---
+
+export type HandoffZipInput = {
+    initiativeName: string;
+    executiveSummary: string;
+    /** Spec legible derivado del análisis UX. */
+    analysisMarkdown: string;
+    userFlowSvg: string;
+    hifiHtmlScreens: string[];
+    tsxScreens: string[];
+    flowStepLabels: string[];
+    availableEndpoints?: ApiEndpointDescriptor[];
+};
+
+function buildHandoffZipLlmUserPrompt(input: HandoffZipInput): string {
+    const n = Math.max(1, input.tsxScreens.length);
+    const sampleHtml = (input.hifiHtmlScreens[0] ?? '').slice(0, 10_000);
+    const sampleTsx = (input.tsxScreens[0] ?? '').slice(0, 10_000);
+    const epJson = JSON.stringify(input.availableEndpoints ?? []).slice(0, 16_000);
+    const steps = input.flowStepLabels.slice(0, 24).map((s, i) => `${i + 1}. ${s}`).join('\n');
+    return [
+        `## Iniciativa\n${input.initiativeName}`,
+        '',
+        '## Resumen ejecutivo',
+        input.executiveSummary.slice(0, 8000),
+        '',
+        '## Análisis (Markdown)',
+        input.analysisMarkdown.slice(0, 24_000),
+        '',
+        `## Flujo (${n} pantallas)`,
+        steps || '(sin etiquetas; usá Pantalla 1..N)',
+        '',
+        '## Endpoints conocidos (JSON; puede estar vacío)',
+        epJson,
+        '',
+        '## Muestra wireframe HiFi (HTML, truncado)',
+        sampleHtml || '(sin HTML)',
+        '',
+        '## Muestra TSX MUI (truncado)',
+        sampleTsx || '(sin TSX)',
+        '',
+        `## Cantidad de archivos en screens/\nExactamente ${n} archivos: Pantalla1.tsx … Pantalla${n}.tsx.`,
+    ].join('\n');
+}
+
+function parseHandoffZipBundleJson(raw: string): {
+    readme: string;
+    themeTs: string;
+    routesTsx: string;
+    endpointsTs: string;
+} {
+    let t = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error('Handoff bundle: JSON no encontrado.');
+    t = t.slice(start, end + 1);
+    const parsed = JSON.parse(t) as Record<string, unknown>;
+    const req = (k: string) => (typeof parsed[k] === 'string' ? (parsed[k] as string).trim() : '');
+    const readme = req('readme');
+    const themeTs = req('themeTs');
+    const routesTsx = req('routesTsx');
+    const endpointsTs = req('endpointsTs');
+    if (!readme || !themeTs || !routesTsx || !endpointsTs) {
+        throw new Error('Handoff bundle: faltan claves readme, themeTs, routesTsx o endpointsTs.');
+    }
+    return { readme, themeTs, routesTsx, endpointsTs };
+}
+
+async function generateHandoffBundleWithLlm(input: HandoffZipInput): Promise<{
+    readme: string;
+    themeTs: string;
+    routesTsx: string;
+    endpointsTs: string;
+}> {
+    const user = buildHandoffZipLlmUserPrompt(input);
+    let raw: string;
+    try {
+        raw = await generateTextWithRetries(HANDOFF_BUNDLE_SYSTEM, user, 0.28, {
+            maxOutputTokens: 16_384,
+            responseMimeType: 'application/json',
+        });
+    } catch (e) {
+        console.warn('Handoff bundle: reintentando sin responseMimeType JSON:', (e as Error)?.message ?? e);
+        raw = await generateTextWithRetries(HANDOFF_BUNDLE_SYSTEM, user, 0.28, { maxOutputTokens: 16_384 });
+    }
+    return parseHandoffZipBundleJson(raw);
+}
+
+function buildFallbackHandoffArtifacts(input: HandoffZipInput): {
+    readme: string;
+    themeTs: string;
+    routesTsx: string;
+    endpointsTs: string;
+} {
+    const n = Math.max(1, input.tsxScreens.length);
+    const lines = input.flowStepLabels.length
+        ? input.flowStepLabels.map((t, i) => `| ${i + 1} | ${t.replace(/\|/g, '/')} |`)
+        : Array.from({ length: n }, (_, i) => `| ${i + 1} | Pantalla ${i + 1} |`);
+    const readme = [
+        `# Handoff — ${input.initiativeName}`,
+        '',
+        '## Setup',
+        '',
+        '1. Node.js 20+',
+        '2. `npm install react react-dom react-router-dom@6 @mui/material @emotion/react @emotion/styled`',
+        '3. Copiá `theme.ts` y aplicá `ThemeProvider` + `CssBaseline` en tu `App`.',
+        '4. Importá y montá el componente exportado por `routes.tsx` dentro de `BrowserRouter`.',
+        '',
+        '## Pantallas',
+        '',
+        '| # | Descripción |',
+        '|---|-------------|',
+        ...lines,
+        '',
+        '## User flow',
+        '',
+        'El archivo `user-flow.svg` resume transiciones; alinealo con las rutas en `routes.tsx`.',
+        '',
+        '## API',
+        '',
+        'Revisá `api/endpoints.ts` (endpoints documentados o inferidos del flujo).',
+    ].join('\n');
+
+    const themeTs = `import { createTheme } from '@mui/material/styles';
+
+/** Tema base inferido para handoff; ajustá palette/typography con el design system final. */
+export const handoffTheme = createTheme({
+    palette: {
+        mode: 'light',
+        primary: { main: '#2563eb' },
+        secondary: { main: '#64748b' },
+        background: { default: '#f8fafc', paper: '#ffffff' },
+    },
+    typography: {
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        h1: { fontSize: '1.75rem', fontWeight: 600 },
+        body1: { fontSize: '0.95rem' },
+    },
+    shape: { borderRadius: 10 },
+});
+
+export default handoffTheme;
+`;
+
+    const imports = Array.from({ length: n }, (_, i) => `import Pantalla${i + 1} from './screens/Pantalla${i + 1}';`).join(
+        '\n'
+    );
+    const routes = Array.from(
+        { length: n },
+        (_, i) =>
+            `      <Route path="/pantalla/${i + 1}" element={<Pantalla${i + 1} />} />`
+    ).join('\n');
+    const routesTsx = `import { Routes, Route, Navigate } from 'react-router-dom';
+${imports}
+
+/** Rutas alineadas al flujo (orden Pantalla 1 → ${n}). */
+export default function HandoffRoutes() {
+    return (
+        <Routes>
+            <Route path="/" element={<Navigate to="/pantalla/1" replace />} />
+${routes}
+            <Route path="*" element={<Navigate to="/pantalla/1" replace />} />
+        </Routes>
+    );
+}
+`;
+
+    const inferred =
+        input.availableEndpoints && input.availableEndpoints.length > 0
+            ? input.availableEndpoints.map(
+                  (e) =>
+                      `  { method: '${e.method.replace(/'/g, "\\'")}', path: '${e.path.replace(/'/g, "\\'")}', summary: '${(e.summary ?? '').replace(/'/g, "\\'")}' },`
+              )
+            : Array.from({ length: n }, (_, i) => {
+                  const label = (input.flowStepLabels[i] ?? `Paso ${i + 1}`).replace(/'/g, "\\'");
+                  return `  { method: 'GET', path: '/api/flow/step/${i + 1}', summary: '${label} (inferido del flujo)' },`;
+              });
+
+    const endpointsTs = `/**
+ * Endpoints disponibles o inferidos para integración con las pantallas del handoff.
+ * Reemplazá stubs por llamadas reales (fetch/axios) según tu backend.
+ */
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export interface ApiEndpoint {
+    method: HttpMethod;
+    path: string;
+    summary?: string;
+}
+
+export const API_ENDPOINTS: ApiEndpoint[] = [
+${inferred.join('\n')}
+];
+
+export function listEndpointsForDocs(): string {
+    return API_ENDPOINTS.map((e) => \`- \${e.method} \${e.path}\${e.summary ? ' — ' + e.summary : ''}\`).join('\\n');
+}
+`;
+
+    return { readme, themeTs, routesTsx, endpointsTs };
+}
+
+/**
+ * Genera un ZIP con README, theme, rutas, pantallas TSX, capa API y user-flow.svg.
+ */
+export async function generateHandoffZip(input: HandoffZipInput): Promise<Buffer> {
+    let readme: string;
+    let themeTs: string;
+    let routesTsx: string;
+    let endpointsTs: string;
+    try {
+        const b = await generateHandoffBundleWithLlm(input);
+        readme = b.readme;
+        themeTs = b.themeTs;
+        routesTsx = b.routesTsx;
+        endpointsTs = b.endpointsTs;
+    } catch (e) {
+        console.warn('generateHandoffZip: usando plantillas fallback:', (e as Error)?.message ?? e);
+        const fb = buildFallbackHandoffArtifacts(input);
+        readme = fb.readme;
+        themeTs = fb.themeTs;
+        routesTsx = fb.routesTsx;
+        endpointsTs = fb.endpointsTs;
+    }
+
+    const zip = new JSZip();
+    const root = zip.folder('handoff');
+    if (!root) throw new Error('No se pudo crear la carpeta handoff/ en el ZIP.');
+
+    root.file('README.md', readme);
+    root.file('theme.ts', themeTs);
+    root.file('routes.tsx', routesTsx);
+    root.file('user-flow.svg', input.userFlowSvg?.trim() || '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><text x="20" y="70" font-size="16">User flow no disponible</text></svg>');
+
+    const screens = root.folder('screens');
+    const apiFolder = root.folder('api');
+    if (!screens || !apiFolder) throw new Error('Estructura interna del ZIP inválida.');
+
+    const n = Math.max(1, input.tsxScreens.length);
+    for (let i = 0; i < n; i++) {
+        const code = input.tsxScreens[i] ?? '// Pantalla vacía\nexport default function Placeholder() { return null; }\n';
+        screens.file(`Pantalla${i + 1}.tsx`, code);
+    }
+    apiFolder.file('endpoints.ts', endpointsTs);
+
+    const out = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    return Buffer.from(out);
 }

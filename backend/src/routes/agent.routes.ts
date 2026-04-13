@@ -3,19 +3,45 @@ import multer from 'multer';
 import { requireAuth } from '../middleware/require-auth.js';
 import { understandingUploadFields } from '../middleware/understanding-upload.js';
 import {
+    generateFullFlowWireframes,
     generateIdeationSolutions,
     generatePrototypeFlowScreens,
     generatePrototypeIterationReply,
     generateSolutionIterationReply,
     generateSpecWithPromptC,
     generateStepEWireframeOptions,
+    generateTsxMuiScreens,
+    generateHandoffZip,
     generateUnderstandingAnalysis,
+    generateUserFlow,
+    iterateUserFlowChat,
     type IdeationSolutionDto,
     type PrototypeScreenSpecDto,
     type UnderstandingAnalysisResult,
 } from '../services/llm.service.js';
 
 const router = Router();
+
+function buildAnalysisMarkdownForHandoff(a: UnderstandingAnalysisResult): string {
+    const blocks: string[] = [
+        `### Síntesis de contexto\n${a.contextSynthesis?.trim() || '—'}`,
+        `### Objetivos de negocio\n${a.businessObjectives?.length ? a.businessObjectives.map((x) => `- ${x}`).join('\n') : '—'}`,
+        `### Insights\n${a.keyInsights?.length ? a.keyInsights.map((x) => `- ${x}`).join('\n') : '—'}`,
+        `### Pain points\n${a.userPainPoints?.length ? a.userPainPoints.map((x) => `- ${x}`).join('\n') : '—'}`,
+        `### Oportunidades\n${a.opportunities?.length ? a.opportunities.map((x) => `- ${x}`).join('\n') : '—'}`,
+        `### Riesgos y restricciones\n${a.risksAndConstraints?.length ? a.risksAndConstraints.map((x) => `- ${x}`).join('\n') : '—'}`,
+        `### Preguntas abiertas\n${a.openQuestions?.length ? a.openQuestions.map((x) => `- ${x}`).join('\n') : '—'}`,
+        `### Foco sugerido para ideación\n${a.suggestedFocusForIdeation?.trim() || '—'}`,
+    ];
+    if (a.availableEndpoints?.length) {
+        blocks.push(
+            `### Endpoints documentados (API)\n${a.availableEndpoints
+                .map((e) => `- **${e.method}** \`${e.path}\`${e.summary ? ` — ${e.summary}` : ''}`)
+                .join('\n')}`
+        );
+    }
+    return blocks.join('\n\n');
+}
 
 router.use(requireAuth);
 
@@ -84,6 +110,7 @@ router.post(
             const mapFiles = req.files as Record<string, Express.Multer.File[]> | undefined;
             const contextFiles = mapFiles?.contextFiles ?? [];
             const screenshots = mapFiles?.screenshots ?? [];
+            const apiSpecFile = mapFiles?.apiSpec?.[0];
 
             const analysis = await generateUnderstandingAnalysis({
                 initiativeName,
@@ -101,6 +128,13 @@ router.post(
                     originalName: f.originalname,
                     mimeType: f.mimetype,
                 })),
+                apiSpec: apiSpecFile
+                    ? {
+                          buffer: apiSpecFile.buffer,
+                          originalName: apiSpecFile.originalname,
+                          mimeType: apiSpecFile.mimetype,
+                      }
+                    : null,
             });
 
             res.json({ success: true, analysis });
@@ -137,6 +171,26 @@ function parseIdeationSolutionBody(x: unknown): IdeationSolutionDto | null {
         howItSolves: howItSolves.length ? howItSolves : ['—'],
         expectedImpact: expectedImpact.length ? expectedImpact : ['—'],
     };
+}
+
+function buildPlatformSpecMarkdown(body: {
+    initiativeName: string;
+    jiraTicket: string;
+    squad: string;
+    analysis: UnderstandingAnalysisResult;
+    solution: IdeationSolutionDto;
+}): string {
+    return [
+        `# ${body.initiativeName}`,
+        `Jira: ${body.jiraTicket || '—'}`,
+        `Squad: ${body.squad || '—'}`,
+        '',
+        '## Análisis (JSON)',
+        JSON.stringify(body.analysis),
+        '',
+        '## Solución elegida (JSON)',
+        JSON.stringify(body.solution),
+    ].join('\n');
 }
 
 function parsePrototypeScreensBody(x: unknown): PrototypeScreenSpecDto[] | null {
@@ -352,6 +406,193 @@ router.post('/generate-prototype-screens', async (req, res) => {
     }
 });
 
+/** POST /api/generate-user-flow — SVG de user flow a partir del análisis + solución aprobada (sin prototipo previo). */
+router.post('/generate-user-flow', async (req, res) => {
+    const body = req.body as {
+        initiativeName?: string;
+        jiraTicket?: string;
+        squad?: string;
+        analysis?: unknown;
+        solution?: unknown;
+        feedback?: string;
+        currentSvg?: string;
+    };
+    const initiativeName = String(body.initiativeName ?? '').trim();
+    if (!initiativeName) return res.status(400).json({ error: 'initiativeName es obligatorio.' });
+    if (!isUnderstandingAnalysis(body.analysis)) {
+        return res.status(400).json({ error: 'analysis inválido.' });
+    }
+    const solution = parseIdeationSolutionBody(body.solution);
+    if (!solution) return res.status(400).json({ error: 'solution inválida.' });
+    const specMd = buildPlatformSpecMarkdown({
+        initiativeName,
+        jiraTicket: String(body.jiraTicket ?? '').trim(),
+        squad: String(body.squad ?? '').trim(),
+        analysis: body.analysis,
+        solution,
+    });
+    const feedback = String(body.feedback ?? '').trim() || undefined;
+    const currentSvg = String(body.currentSvg ?? '').trim() || undefined;
+    try {
+        const svg = await generateUserFlow(specMd, solution, {
+            feedback,
+            priorSvg: currentSvg,
+        });
+        res.json({ success: true, svg });
+    } catch (error) {
+        const err = error as Error;
+        console.error('[generate-user-flow] fallo:', err?.message ?? error);
+        console.error('[generate-user-flow] stack:', err?.stack ?? '(sin stack)');
+        console.error('[generate-user-flow] contexto:', {
+            initiativeName,
+            specMarkdownChars: specMd.length,
+            solutionTitle: solution.title,
+            flowSteps: solution.flowSteps.length,
+            hasFeedback: Boolean(feedback),
+            hasPriorSvg: Boolean(currentSvg),
+        });
+        const msg = err?.message || 'Error generando user flow';
+        res.status(500).json({ error: msg });
+    }
+});
+
+/** POST /api/iterate-user-flow-chat — chat sin regenerar SVG. */
+router.post('/iterate-user-flow-chat', async (req, res) => {
+    const body = req.body as {
+        initiativeName?: string;
+        jiraTicket?: string;
+        squad?: string;
+        analysis?: unknown;
+        solution?: unknown;
+        currentSvg?: string;
+        history?: unknown;
+        userMessage?: string;
+    };
+    const initiativeName = String(body.initiativeName ?? '').trim();
+    const userMessage = String(body.userMessage ?? '').trim();
+    if (!initiativeName || !userMessage) {
+        return res.status(400).json({ error: 'initiativeName y userMessage son obligatorios.' });
+    }
+    if (!isUnderstandingAnalysis(body.analysis)) {
+        return res.status(400).json({ error: 'analysis inválido.' });
+    }
+    const solution = parseIdeationSolutionBody(body.solution);
+    if (!solution) return res.status(400).json({ error: 'solution inválida.' });
+    const currentSvg = String(body.currentSvg ?? '').trim();
+    if (!currentSvg) return res.status(400).json({ error: 'currentSvg es obligatorio.' });
+    const histRaw = Array.isArray(body.history) ? body.history : [];
+    const history: { role: 'user' | 'assistant'; text: string }[] = [];
+    for (const h of histRaw) {
+        if (!h || typeof h !== 'object') continue;
+        const o = h as Record<string, unknown>;
+        const role = o.role === 'assistant' ? 'assistant' : o.role === 'user' ? 'user' : null;
+        const text = typeof o.text === 'string' ? o.text.trim() : '';
+        if (role && text) history.push({ role, text });
+    }
+    const specMd = buildPlatformSpecMarkdown({
+        initiativeName,
+        jiraTicket: String(body.jiraTicket ?? '').trim(),
+        squad: String(body.squad ?? '').trim(),
+        analysis: body.analysis,
+        solution,
+    });
+    try {
+        const reply = await iterateUserFlowChat({
+            specMarkdown: specMd,
+            solution,
+            currentSvg,
+            history,
+            userMessage,
+        });
+        res.json({ success: true, reply });
+    } catch (error) {
+        console.error('Error en iterate-user-flow-chat:', error);
+        const msg = (error as Error)?.message || 'Error en el chat';
+        res.status(500).json({ error: msg });
+    }
+});
+
+/** POST /api/generate-full-flow-hifi — wireframes HiFi de todas las pantallas (---SCREEN_N---). */
+router.post('/generate-full-flow-hifi', async (req, res) => {
+    const body = req.body as {
+        initiativeName?: string;
+        jiraTicket?: string;
+        squad?: string;
+        analysis?: unknown;
+        solution?: unknown;
+        feedback?: string;
+    };
+    const initiativeName = String(body.initiativeName ?? '').trim();
+    if (!initiativeName) return res.status(400).json({ error: 'initiativeName es obligatorio.' });
+    if (!isUnderstandingAnalysis(body.analysis)) {
+        return res.status(400).json({ error: 'analysis inválido.' });
+    }
+    const solution = parseIdeationSolutionBody(body.solution);
+    if (!solution) return res.status(400).json({ error: 'solution inválida.' });
+    const specMd = buildPlatformSpecMarkdown({
+        initiativeName,
+        jiraTicket: String(body.jiraTicket ?? '').trim(),
+        squad: String(body.squad ?? '').trim(),
+        analysis: body.analysis,
+        solution,
+    });
+    const feedback = String(body.feedback ?? '').trim() || undefined;
+    try {
+        const raw = await generateFullFlowWireframes(specMd, solution, { feedback });
+        res.json({ success: true, raw });
+    } catch (error) {
+        console.error('Error en generate-full-flow-hifi:', error);
+        const msg = (error as Error)?.message || 'Error generando wireframes HiFi';
+        res.status(500).json({ error: msg });
+    }
+});
+
+/** POST /api/generate-tsx-mui-screens — TSX MUI por pantalla (---TSX_N---). */
+router.post('/generate-tsx-mui-screens', async (req, res) => {
+    const body = req.body as {
+        initiativeName?: string;
+        jiraTicket?: string;
+        squad?: string;
+        analysis?: unknown;
+        solution?: unknown;
+        hifiHtmlScreens?: unknown;
+        feedback?: string;
+    };
+    const initiativeName = String(body.initiativeName ?? '').trim();
+    if (!initiativeName) return res.status(400).json({ error: 'initiativeName es obligatorio.' });
+    if (!isUnderstandingAnalysis(body.analysis)) {
+        return res.status(400).json({ error: 'analysis inválido.' });
+    }
+    const solution = parseIdeationSolutionBody(body.solution);
+    if (!solution) return res.status(400).json({ error: 'solution inválida.' });
+    const specMd = buildPlatformSpecMarkdown({
+        initiativeName,
+        jiraTicket: String(body.jiraTicket ?? '').trim(),
+        squad: String(body.squad ?? '').trim(),
+        analysis: body.analysis,
+        solution,
+    });
+    const rawScreens = body.hifiHtmlScreens;
+    if (!Array.isArray(rawScreens) || rawScreens.length === 0) {
+        return res.status(400).json({ error: 'hifiHtmlScreens debe ser un array de strings HTML no vacío.' });
+    }
+    const hifiHtmlScreens = rawScreens
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        .map((x) => x.trim());
+    if (hifiHtmlScreens.length === 0) {
+        return res.status(400).json({ error: 'hifiHtmlScreens no tiene entradas válidas.' });
+    }
+    const feedback = String(body.feedback ?? '').trim() || undefined;
+    try {
+        const tsxScreens = await generateTsxMuiScreens(specMd, hifiHtmlScreens, { feedback });
+        res.json({ success: true, tsxScreens });
+    } catch (error) {
+        console.error('Error en generate-tsx-mui-screens:', error);
+        const msg = (error as Error)?.message || 'Error generando TSX';
+        res.status(500).json({ error: msg });
+    }
+});
+
 /** POST /api/generate-spec — Prompt C (spec para revisión tipo Gate 1, sin persistir tarjeta). */
 router.post('/generate-spec', async (req, res) => {
     const { transcript } = req.body as { transcript?: string };
@@ -369,6 +610,64 @@ router.post('/generate-spec', async (req, res) => {
     } catch (error) {
         console.error('Error en Gemini (Prompt C):', error);
         res.status(500).json({ error: 'Hubo un problema al procesar la reunión con IA.' });
+    }
+});
+
+/** POST /api/generate-handoff-zip — ZIP para desarrollo (README, theme, rutas, screens, API, SVG). */
+router.post('/generate-handoff-zip', async (req, res) => {
+    const body = req.body as {
+        initiativeName?: string;
+        analysis?: unknown;
+        userFlowSvg?: string;
+        hifiWireframesHtml?: unknown;
+        tsxMuiScreens?: unknown;
+        flowStepLabels?: unknown;
+    };
+    const initiativeName = String(body.initiativeName ?? '').trim();
+    if (!initiativeName) {
+        return res.status(400).json({ error: 'initiativeName es obligatorio.' });
+    }
+    if (!isUnderstandingAnalysis(body.analysis)) {
+        return res.status(400).json({ error: 'analysis inválido.' });
+    }
+    const analysis = body.analysis;
+    const userFlowSvg = String(body.userFlowSvg ?? '').trim();
+    const rawHifi = body.hifiWireframesHtml;
+    const hifiWireframesHtml = Array.isArray(rawHifi)
+        ? (rawHifi as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        : [];
+    const rawTsx = body.tsxMuiScreens;
+    const tsxMuiScreens = Array.isArray(rawTsx)
+        ? (rawTsx as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        : [];
+    if (tsxMuiScreens.length === 0) {
+        return res.status(400).json({ error: 'tsxMuiScreens debe ser un array de strings no vacío.' });
+    }
+    const rawSteps = body.flowStepLabels;
+    const flowStepLabels = Array.isArray(rawSteps)
+        ? (rawSteps as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        : [];
+
+    try {
+        const analysisMarkdown = buildAnalysisMarkdownForHandoff(analysis);
+        const zipBuffer = await generateHandoffZip({
+            initiativeName,
+            executiveSummary: analysis.executiveSummary,
+            analysisMarkdown,
+            userFlowSvg,
+            hifiHtmlScreens: hifiWireframesHtml,
+            tsxScreens: tsxMuiScreens,
+            flowStepLabels,
+            availableEndpoints: analysis.availableEndpoints,
+        });
+        const safe = initiativeName.replace(/[^\w\-.]+/g, '_').slice(0, 72) || 'handoff';
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${safe}-handoff.zip"`);
+        res.send(zipBuffer);
+    } catch (error) {
+        console.error('Error en generate-handoff-zip:', error);
+        const msg = (error as Error)?.message || 'Error generando ZIP de handoff';
+        res.status(500).json({ error: msg });
     }
 });
 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { PrototypeScreenSpec } from '../../../lib/workflowSession';
 
 type ScreenRow = { index: number; title: string; objective: string; interaction: string };
@@ -10,11 +11,13 @@ function buildRows(
         return prototypeScreens.map((s, i) => ({
             index: i + 1,
             title: s.title || `Pantalla ${i + 1}`,
-            objective: s.subtitle || 'Pantalla del flujo prototipado para esta iniciativa.',
-            interaction: [s.note, ...(s.bullets || []).map((b) => `• ${b}`)].filter(Boolean).join('\n') || 'Ver detalle en prototipado y en contenido.',
+            objective: s.subtitle || 'Pantalla lógica del flujo para esta iniciativa.',
+            interaction: [s.note, ...(s.bullets || []).map((b) => `• ${b}`)].filter(Boolean).join('\n') || 'Ver detalle en user flow y en contenido.',
         }));
     }
-    const steps = flowSteps.length ? flowSteps : ['Definir paso 1', 'Definir paso 2', 'Definir paso 3', 'Definir paso 4', 'Definir paso 5', 'Definir paso 6'];
+    const steps = flowSteps.length
+        ? flowSteps
+        : ['Definir paso 1', 'Definir paso 2', 'Definir paso 3', 'Definir paso 4', 'Definir paso 5', 'Definir paso 6'];
     const out: ScreenRow[] = [];
     for (let i = 0; i < 6; i++) {
         const text = steps[i] ?? `Paso ${i + 1} (completar en diseño)`;
@@ -31,18 +34,79 @@ function buildRows(
 export default function HandoffScreensTab({
     prototypeScreens,
     flowSteps,
+    flowStepLabels,
+    hifiWireframesHtml,
 }: {
     prototypeScreens?: PrototypeScreenSpec[] | null;
     flowSteps: string[];
+    /** Subtítulo opcional por pantalla (misma longitud que wireframes HiFi). */
+    flowStepLabels?: string[] | null;
+    hifiWireframesHtml?: string[] | null;
 }) {
+    const [carousel, setCarousel] = useState(0);
+    const hifi = hifiWireframesHtml?.filter(Boolean) ?? [];
+    const n = hifi.length;
+
+    if (n > 0) {
+        const safe = Math.min(carousel, n - 1);
+        const stepTitle = flowStepLabels?.[safe]?.trim();
+        return (
+            <div className="doc-content p-6 max-h-[640px] overflow-y-auto bg-white">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 pb-2 border-b-2 border-purple-600">
+                    Wireframes alta fidelidad
+                </h3>
+                <p className="text-gray-600 mb-4 text-sm">
+                    Vista previa HTML (desktop) generada en el paso «Wireframes HiFi», alineada a MUI v5 como referencia
+                    visual.
+                </p>
+                {stepTitle ? (
+                    <p className="text-sm font-medium text-gray-800 mb-2" title={stepTitle}>
+                        Paso: {stepTitle}
+                    </p>
+                ) : null}
+                <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                    <div className="p-3 max-h-[520px] overflow-y-auto">
+                        <iframe
+                            title={`Wireframe HiFi ${safe + 1}`}
+                            className="w-full min-h-[480px] bg-white border border-gray-200 rounded"
+                            srcDoc={hifi[safe]}
+                            sandbox="allow-scripts allow-same-origin"
+                        />
+                    </div>
+                    <div className="bg-gray-800 text-white px-4 py-3 flex items-center justify-between">
+                        <span className="text-sm">
+                            Pantalla <span className="font-semibold">{safe + 1}</span> de {n}
+                        </span>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setCarousel((c) => Math.max(0, c - 1))}
+                                className="px-3 py-1.5 bg-gray-700 rounded hover:bg-gray-600 text-sm ux-focus"
+                            >
+                                ← Anterior
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCarousel((c) => Math.min(n - 1, c + 1))}
+                                className="px-3 py-1.5 bg-gray-700 rounded hover:bg-gray-600 text-sm ux-focus"
+                            >
+                                Siguiente →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const rows = buildRows(prototypeScreens, flowSteps);
 
     return (
         <div className="doc-content p-6 max-h-[600px] overflow-y-auto bg-white">
             <h3 className="text-xl font-semibold text-gray-900 mb-4 pb-2 border-b-2 border-purple-600">Listado de pantallas</h3>
             <p className="text-gray-600 mb-6">
-                Mapa de las 6 pantallas del prototipo de esta iniciativa (generadas a partir del análisis, la solución elegida y la
-                iteración).
+                Mapa de pantallas lógicas (derivado del análisis y la solución). Generá wireframes HiFi en el flujo para ver previews
+                aquí.
             </p>
 
             <div className="space-y-6">

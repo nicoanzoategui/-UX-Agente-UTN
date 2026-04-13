@@ -62,6 +62,17 @@ export type WorkflowSession = {
     prototypeMeta?: PrototypeMeta;
     /** Si existe (6 ítems), el paso Prototipado usa estos textos en lugar del demo fijo. */
     prototypeScreens?: PrototypeScreenSpec[];
+    /** SVG del user flow (post-prototipo). */
+    userFlowSvg?: string;
+    userFlowApproved?: boolean;
+    /** Respuesta bruta con ---SCREEN_N--- (opcional, para depuración). */
+    hifiWireframesRaw?: string;
+    /** HTML HiFi por pantalla (mismo orden que el prototipo). */
+    hifiWireframesHtml?: string[];
+    hifiWireframesApproved?: boolean;
+    /** TSX MUI por pantalla. */
+    tsxMuiScreens?: string[];
+    tsxMuiApproved?: boolean;
     /** Usuario abrió la página de handoff al menos una vez */
     handoffVisited?: boolean;
     /** Llegó al resumen final del proyecto */
@@ -138,6 +149,17 @@ export function loadWorkflowByInitiativeId(initiativeId: string): WorkflowSessio
             selectedSolutionIndex: p.selectedSolutionIndex,
             prototypeMeta: p.prototypeMeta,
             prototypeScreens: Array.isArray(p.prototypeScreens) ? p.prototypeScreens : undefined,
+            userFlowSvg: typeof p.userFlowSvg === 'string' ? p.userFlowSvg : undefined,
+            userFlowApproved: p.userFlowApproved === true,
+            hifiWireframesRaw: typeof p.hifiWireframesRaw === 'string' ? p.hifiWireframesRaw : undefined,
+            hifiWireframesHtml: Array.isArray(p.hifiWireframesHtml)
+                ? (p.hifiWireframesHtml as unknown[]).filter((x): x is string => typeof x === 'string')
+                : undefined,
+            hifiWireframesApproved: p.hifiWireframesApproved === true,
+            tsxMuiScreens: Array.isArray(p.tsxMuiScreens)
+                ? (p.tsxMuiScreens as unknown[]).filter((x): x is string => typeof x === 'string')
+                : undefined,
+            tsxMuiApproved: p.tsxMuiApproved === true,
             handoffVisited: p.handoffVisited,
             workflowCompleted: p.workflowCompleted,
         };
@@ -194,6 +216,26 @@ export function patchWorkflow(partial: Partial<WorkflowSession>): WorkflowSessio
     const cur = loadWorkflow();
     if (!cur) return null;
     const next = { ...cur, ...partial };
+    saveWorkflow(next);
+    return next;
+}
+
+/** Al regenerar el prototipo, se invalida todo lo posterior (user flow, HiFi, TSX, handoff). */
+export function resetPostPrototypePipelineAndPatch(partial: Partial<WorkflowSession>): WorkflowSession | null {
+    const cur = loadWorkflow();
+    if (!cur) return null;
+    const next: WorkflowSession = { ...cur, ...partial };
+    delete next.prototypeMeta;
+    delete next.prototypeScreens;
+    delete next.userFlowSvg;
+    delete next.hifiWireframesRaw;
+    delete next.hifiWireframesHtml;
+    delete next.tsxMuiScreens;
+    next.userFlowApproved = false;
+    next.hifiWireframesApproved = false;
+    next.tsxMuiApproved = false;
+    next.handoffVisited = false;
+    next.workflowCompleted = false;
     saveWorkflow(next);
     return next;
 }

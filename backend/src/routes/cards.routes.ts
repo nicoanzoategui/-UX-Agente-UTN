@@ -18,6 +18,7 @@ import {
     clearLastGenerationError,
     duplicateCard,
     patchKanbanColumn,
+    persistCardPlatformPipelineArtifacts,
     rejectFlowbiteGate,
     rejectSpecGate,
     rejectStakeholderGate,
@@ -190,6 +191,36 @@ router.get('/:id/export', async (req, res) => {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
         res.send(JSON.stringify(payload, null, 2));
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/** PATCH — guardar artefactos del pipeline post-prototipo (SVG user flow, HTML HiFi full, JSON array TSX). Opcional. */
+router.patch('/:id/platform-pipeline', async (req, res) => {
+    try {
+        const w = wid(req);
+        const body = req.body as {
+            user_flow_svg?: string | null;
+            hifi_full_html?: string | null;
+            tsx_mui_json?: string | null;
+        };
+        const patch: Partial<Record<'platform_user_flow_svg' | 'platform_hifi_full_html' | 'platform_tsx_mui_json', string | null>> =
+            {};
+        if ('user_flow_svg' in body) patch.platform_user_flow_svg = body.user_flow_svg ?? null;
+        if ('hifi_full_html' in body) patch.platform_hifi_full_html = body.hifi_full_html ?? null;
+        if ('tsx_mui_json' in body) patch.platform_tsx_mui_json = body.tsx_mui_json ?? null;
+        const card = await queryOne<{ id: string }>(
+            `SELECT id FROM kickoff_cards WHERE id = ? AND workspace_id = ?`,
+            [req.params.id, w]
+        );
+        if (!card) return res.status(404).json({ error: 'Card not found' });
+        await persistCardPlatformPipelineArtifacts(req.params.id, w, patch);
+        const next = await queryOne<any>('SELECT * FROM kickoff_cards WHERE id = ? AND workspace_id = ?', [
+            req.params.id,
+            w,
+        ]);
+        res.json(next);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

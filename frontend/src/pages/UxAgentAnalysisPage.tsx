@@ -195,6 +195,21 @@ export default function UxAgentAnalysisPage() {
                         </div>
                     </div>
 
+                    {a.availableEndpoints && a.availableEndpoints.length > 0 ? (
+                        <div className="border border-blue-200 bg-blue-50/80 rounded-lg p-6">
+                            <h3 className="font-semibold text-gray-900 mb-3">Endpoints de API (desde tu spec)</h3>
+                            <ul className="space-y-2 text-sm text-gray-800 font-mono">
+                                {a.availableEndpoints.map((e, i) => (
+                                    <li key={`${e.method}-${e.path}-${i}`}>
+                                        <span className="font-semibold text-blue-800">{e.method}</span>{' '}
+                                        <span className="text-gray-900">{e.path}</span>
+                                        {e.summary ? <span className="text-gray-600 font-sans"> — {e.summary}</span> : null}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ) : null}
+
                     {hasExtended ? (
                         <details className="border border-gray-200 rounded-lg p-4 bg-gray-50/80">
                             <summary className="cursor-pointer font-medium text-gray-900 text-sm select-none">

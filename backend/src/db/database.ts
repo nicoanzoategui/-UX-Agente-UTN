@@ -149,6 +149,9 @@ async function ensureKickoffCardColumns() {
         `ALTER TABLE kickoff_cards ADD COLUMN gate_flowbite_status TEXT NOT NULL DEFAULT 'pending'`,
         `ALTER TABLE kickoff_cards ADD COLUMN gate_flowbite_comment TEXT`,
         `ALTER TABLE kickoff_cards ADD COLUMN flowbite_metadata TEXT`,
+        `ALTER TABLE kickoff_cards ADD COLUMN platform_user_flow_svg TEXT`,
+        `ALTER TABLE kickoff_cards ADD COLUMN platform_hifi_full_html TEXT`,
+        `ALTER TABLE kickoff_cards ADD COLUMN platform_tsx_mui_json TEXT`,
     ];
     for (const sql of alters) {
         try {

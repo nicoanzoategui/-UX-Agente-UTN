@@ -16,9 +16,12 @@ function understandingFileFilter(_req: Request, file: Express.Multer.File, cb: m
         mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         mime.startsWith('text/') ||
         mime === 'application/json' ||
+        mime === 'application/x-yaml' ||
+        mime === 'text/yaml' ||
+        mime === 'application/yaml' ||
         mime === 'application/octet-stream' ||
         mime.startsWith('image/');
-    const okExt = /\.(pdf|doc|docx|txt|md|markdown|json|png|jpe?g|webp|gif)$/i.test(name);
+    const okExt = /\.(pdf|doc|docx|txt|md|markdown|json|ya?ml|png|jpe?g|webp|gif)$/i.test(name);
     if (okMime || okExt) {
         cb(null, true);
         return;
@@ -35,4 +38,6 @@ export const understandingUpload = multer({
 export const understandingUploadFields = understandingUpload.fields([
     { name: 'contextFiles', maxCount: MAX_CONTEXT },
     { name: 'screenshots', maxCount: MAX_SCREENSHOTS },
+    /** OpenAPI/Swagger JSON, YAML o Markdown de endpoints (opcional). */
+    { name: 'apiSpec', maxCount: 1 },
 ]);

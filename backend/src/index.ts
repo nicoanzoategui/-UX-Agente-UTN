@@ -28,21 +28,56 @@ if (trustProxy) {
 }
 
 const allowedOrigins = corsAllowedOrigins();
+
+const corsExposedHeaders = [
+    'Content-Disposition',
+    'Retry-After',
+    'X-RateLimit-Limit',
+    'X-RateLimit-Remaining',
+    'X-RateLimit-Reset',
+] as const;
+
+/**
+ * En desarrollo Vite puede tomar 5174, 5175, etc. si el puerto default está ocupado;
+ * un `FRONTEND_URL` fijo a :5173 hace fallar el fetch (el navegador lo muestra como red/CORS).
+ */
+function devLocalhostOrigin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void): void {
+    if (!origin) {
+        callback(null, true);
+        return;
+    }
+    if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+    }
+    try {
+        const u = new URL(origin);
+        const okHost = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+        const okProto = u.protocol === 'http:' || u.protocol === 'https:';
+        if (okHost && okProto) {
+            callback(null, true);
+            return;
+        }
+    } catch {
+        /* URL inválida */
+    }
+    callback(new Error('Not allowed by CORS'));
+}
+
 app.use(
     cors({
-        origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
+        origin:
+            config.NODE_ENV === 'production'
+                ? allowedOrigins.length === 1
+                    ? allowedOrigins[0]
+                    : allowedOrigins
+                : devLocalhostOrigin,
         credentials: true,
-        exposedHeaders: [
-            'Content-Disposition',
-            'Retry-After',
-            'X-RateLimit-Limit',
-            'X-RateLimit-Remaining',
-            'X-RateLimit-Reset',
-        ],
+        exposedHeaders: [...corsExposedHeaders],
     })
 );
 app.use(cookieParser());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '32mb' }));
 
 app.use('/api', apiRateLimit);
 

@@ -2,13 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ProgressBar from '../components/platform/ProgressBar';
 import { useToast } from '../context/ToastContext';
-import {
-    buildPrototypeMetaFromGenerateResponse,
-    loadWorkflow,
-    patchWorkflow,
-    type IdeationSolution,
-    type WorkflowSession,
-} from '../lib/workflowSession';
+import { loadWorkflow, patchWorkflow, resetPostPrototypePipelineAndPatch, type IdeationSolution, type WorkflowSession } from '../lib/workflowSession';
 import { api, ApiError } from '../services/api';
 
 function IconRefresh() {
@@ -110,7 +104,7 @@ export default function IdeacionPage() {
     const navigate = useNavigate();
     const toast = useToast();
     const [wf, setWf] = useState<WorkflowSession | null>(null);
-    const [overlayMode, setOverlayMode] = useState<'idle' | 'ideation' | 'prototype'>('idle');
+    const [overlayMode, setOverlayMode] = useState<'idle' | 'ideation'>('idle');
     const [error, setError] = useState<string | null>(null);
 
     const runIdeation = useCallback(async (base: WorkflowSession) => {
@@ -153,37 +147,10 @@ export default function IdeacionPage() {
         void runIdeation(w);
     }, [navigate, runIdeation]);
 
-    async function acceptSolution(index: 1 | 2 | 3) {
+    function acceptSolution(index: 1 | 2 | 3) {
         if (!wf?.ideationSolutions?.[index - 1] || !wf.analysis) return;
-        const solution = wf.ideationSolutions[index - 1];
-        setOverlayMode('prototype');
-        setError(null);
-        try {
-            const { summaryLine, screens, estimatedTimeLabel, flowType } = await api.generatePrototypeScreens({
-                initiativeName: wf.initiativeName,
-                jiraTicket: wf.jiraTicket,
-                squad: wf.squad,
-                analysis: wf.analysis,
-                solution,
-                iterationMessages: [],
-            });
-            patchWorkflow({
-                selectedSolutionIndex: index,
-                prototypeMeta: buildPrototypeMetaFromGenerateResponse(solution, {
-                    summaryLine,
-                    screens,
-                    estimatedTimeLabel,
-                    flowType,
-                }),
-                prototypeScreens: screens,
-            });
-            navigate('/prototipado');
-        } catch (e) {
-            const msg = e instanceof ApiError ? e.message : 'No se pudo generar el prototipo. Reintentá.';
-            toast(msg, 'error');
-        } finally {
-            setOverlayMode('idle');
-        }
+        resetPostPrototypePipelineAndPatch({ selectedSolutionIndex: index });
+        navigate('/user-flow');
     }
 
     const contextLine = wf
@@ -226,16 +193,12 @@ export default function IdeacionPage() {
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1 relative">
             <ProgressBar currentStep={2} />
 
-            {(overlayMode === 'ideation' || overlayMode === 'prototype') && (
+            {overlayMode === 'ideation' && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[400] p-4">
                     <div className="bg-white rounded-lg p-8 max-w-md text-center shadow-xl">
                         <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                         <h3 className="text-xl font-bold text-gray-900 mb-2">UX Agent procesando…</h3>
-                        <p className="text-gray-600">
-                            {overlayMode === 'ideation'
-                                ? 'Analizando información y generando propuestas'
-                                : 'Preparando el prototipo navegable'}
-                        </p>
+                        <p className="text-gray-600">Analizando información y generando propuestas</p>
                     </div>
                 </div>
             )}

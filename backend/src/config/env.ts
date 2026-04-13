@@ -2,11 +2,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
-dotenv.config();
-
 /** Raíz del repo (backend/src/config → ../../..). Usado por AIDesigner CLI (--cwd / repo_context). */
 const __configDir = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(__configDir, '..', '..', '..');
+
+// Monorepo: `.env` suele vivir en la raíz; `backend/.env` puede sobreescribir si existe.
+dotenv.config({ path: join(REPO_ROOT, '.env') });
+dotenv.config();
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
     if (raw === undefined || raw.trim() === '') return fallback;

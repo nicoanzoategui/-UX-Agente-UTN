@@ -24,7 +24,7 @@ export default function ProjectSummaryPage() {
 
     return (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
-            <ProgressBar currentStep={4} />
+            <ProgressBar currentStep={6} />
 
             <div className="bg-white rounded-lg shadow-sm p-8 fade-in">
                 <div className="text-center mb-8">
@@ -47,8 +47,10 @@ export default function ProjectSummaryPage() {
                         {[
                             { n: 1, t: 'Entendimiento', d: 'Contexto estructurado del problema por el UX Agent' },
                             { n: 2, t: 'Ideación', d: '3 propuestas de solución generadas con impacto estimado' },
-                            { n: 3, t: 'Prototipado', d: 'Wireframe navegable en baja fidelidad (6 pantallas)' },
-                            { n: 4, t: 'Handoff', d: 'Documentación completa en Confluence + Diseño en Figma' },
+                            { n: 3, t: 'User flow', d: 'Diagrama SVG de pantallas y transiciones' },
+                            { n: 4, t: 'Wireframes HiFi', d: 'HTML desktop estilo MUI v5 (referencia visual)' },
+                            { n: 5, t: 'Código TSX', d: 'Componentes React + MUI v5 por pantalla' },
+                            { n: 6, t: 'Handoff', d: 'Documentación y entregables para desarrollo' },
                         ].map((row) => (
                             <div key={row.n} className="flex items-center">
                                 <div className="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold mr-4 shrink-0">
@@ -100,7 +102,7 @@ export default function ProjectSummaryPage() {
                     <h3 className="font-semibold text-gray-900 mb-4">Beneficios del flujo AI-First</h3>
                     <div className="grid grid-cols-2 gap-4">
                         {[
-                            ['Mayor velocidad', 'Exploración y prototipado 3x más rápido'],
+                            ['Mayor velocidad', 'Exploración y diseño del flujo 3x más rápido'],
                             ['Mejor análisis', 'Contexto estructurado del problema'],
                             ['Menos trabajo manual', 'Documentación generada automáticamente'],
                             ['Handoff claro', 'Dev recibe especificación completa'],

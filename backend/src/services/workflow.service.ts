@@ -810,3 +810,28 @@ export async function unlockStuckGeneration(cardId: string, workspaceId: string)
     );
     await syncKanbanColumn(cardId, workspaceId);
 }
+
+const PLATFORM_PIPELINE_COLS = ['platform_user_flow_svg', 'platform_hifi_full_html', 'platform_tsx_mui_json'] as const;
+
+/**
+ * Persiste artefactos del pipeline post-prototipo (plataforma) en una tarjeta kickoff.
+ * El flujo interactivo vive en `/api/generate-user-flow` y rutas hermanas; esto es opcional para equipos que vinculen tarjeta + iniciativa.
+ */
+export async function persistCardPlatformPipelineArtifacts(
+    cardId: string,
+    workspaceId: string,
+    patch: Partial<Record<(typeof PLATFORM_PIPELINE_COLS)[number], string | null>>
+): Promise<void> {
+    const entries = Object.entries(patch).filter(
+        ([k, v]) =>
+            (PLATFORM_PIPELINE_COLS as readonly string[]).includes(k) &&
+            (typeof v === 'string' || v === null)
+    ) as [string, string | null][];
+    if (entries.length === 0) return;
+    const sets = entries.map(([k]) => `${k} = ?`).join(', ');
+    const vals = entries.map(([, v]) => v);
+    await run(
+        `UPDATE kickoff_cards SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE id = ?${WS}`,
+        [...vals, cardId, workspaceId]
+    );
+}

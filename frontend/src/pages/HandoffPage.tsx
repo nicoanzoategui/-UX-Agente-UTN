@@ -5,8 +5,10 @@ import HandoffAnalyticsTab from '../components/platform/handoff/HandoffAnalytics
 import HandoffComponentsTab from '../components/platform/handoff/HandoffComponentsTab';
 import HandoffContentTab from '../components/platform/handoff/HandoffContentTab';
 import HandoffScreensTab from '../components/platform/handoff/HandoffScreensTab';
+import { useToast } from '../context/ToastContext';
 import { getCurrentInitiativeId, setInitiativeCompleted } from '../lib/initiativesSession';
 import { loadWorkflow, patchWorkflow } from '../lib/workflowSession';
+import { api, ApiError } from '../services/api';
 
 function CheckLi({ className, children }: { className: string; children: ReactNode }) {
     return (
@@ -27,8 +29,10 @@ type DocTab = 'overview' | 'screens' | 'content' | 'components' | 'analytics';
 
 export default function HandoffPage() {
     const navigate = useNavigate();
+    const toast = useToast();
     const wf = loadWorkflow();
     const [tab, setTab] = useState<DocTab>('overview');
+    const [zipBusy, setZipBusy] = useState(false);
     const markedHandoffVisit = useRef(false);
 
     useEffect(() => {
@@ -39,18 +43,21 @@ export default function HandoffPage() {
     }, []);
 
     useEffect(() => {
+        const w = loadWorkflow();
+        if (!w?.tsxMuiApproved) return;
         if (markedHandoffVisit.current) return;
         markedHandoffVisit.current = true;
         patchWorkflow({ handoffVisited: true });
     }, []);
 
-    if (
-        !wf?.analysis ||
-        wf.selectedSolutionIndex == null ||
-        !wf.ideationSolutions?.length ||
-        !wf.prototypeMeta
-    ) {
-        return <Navigate to="/prototipado" replace />;
+    if (!wf?.analysis || wf.selectedSolutionIndex == null || !wf.ideationSolutions?.length) {
+        return <Navigate to="/ideacion" replace />;
+    }
+
+    if (!wf.tsxMuiApproved) {
+        if (!wf.userFlowApproved) return <Navigate to="/user-flow" replace />;
+        if (!wf.hifiWireframesApproved) return <Navigate to="/wireframes-hifi" replace />;
+        return <Navigate to="/codigo-mui" replace />;
     }
 
     const sol = wf.ideationSolutions[wf.selectedSolutionIndex - 1];
@@ -64,16 +71,47 @@ export default function HandoffPage() {
         wf.analysis.businessObjectives.length > 0
             ? wf.analysis.businessObjectives.join(' ')
             : 'Definir objetivos de negocio con el equipo de producto.';
-    const flujoPrincipal =
-        sol.flowSteps.length > 0
-            ? sol.flowSteps.join(' → ')
-            : wf.prototypeMeta?.summaryLine || 'Definir el flujo en base al prototipo y al análisis.';
+    const flujoPrincipal = sol.flowSteps.length > 0 ? sol.flowSteps.join(' → ') : 'Definir el flujo en base al análisis.';
 
     const opportunities = wf.analysis.opportunities ?? [];
     const risks = wf.analysis.risksAndConstraints ?? [];
     const openQuestions = wf.analysis.openQuestions ?? [];
     const keyInsights = wf.analysis.keyInsights ?? [];
     const focusIdeacion = wf.analysis.suggestedFocusForIdeation?.trim() ?? '';
+
+    async function downloadHandoffZip() {
+        const w = loadWorkflow();
+        if (!w?.analysis) {
+            toast('No hay análisis en sesión.', 'error');
+            return;
+        }
+        const tsx = w.tsxMuiScreens?.filter((x) => x.trim()) ?? [];
+        if (tsx.length === 0) {
+            toast('No hay código TSX generado para armar el handoff.', 'error');
+            return;
+        }
+        const idx = w.selectedSolutionIndex;
+        const activeSol =
+            idx != null && idx >= 1 && idx <= 3 ? w.ideationSolutions?.[idx - 1] : undefined;
+        const flowStepLabels = activeSol?.flowSteps ?? sol.flowSteps;
+        setZipBusy(true);
+        try {
+            await api.generateHandoffZip({
+                initiativeName: w.initiativeName,
+                analysis: w.analysis,
+                userFlowSvg: w.userFlowSvg ?? '',
+                hifiWireframesHtml: w.hifiWireframesHtml ?? [],
+                tsxMuiScreens: tsx,
+                flowStepLabels,
+            });
+            toast('Paquete handoff descargado.', 'success');
+        } catch (e) {
+            const msg = e instanceof ApiError ? e.message : 'No se pudo generar el ZIP de handoff.';
+            toast(msg, 'error');
+        } finally {
+            setZipBusy(false);
+        }
+    }
 
     function tabBtn(id: DocTab, label: string) {
         const active = tab === id;
@@ -94,17 +132,54 @@ export default function HandoffPage() {
 
     return (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
-            <ProgressBar currentStep={4} />
+            <ProgressBar currentStep={6} />
 
             <div className="bg-white rounded-lg shadow-sm p-8 fade-in">
                 <div className="mb-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h1 className="text-3xl font-bold text-gray-900">4. Handoff Colaborativo</h1>
+                        <h1 className="text-3xl font-bold text-gray-900">6. Handoff colaborativo</h1>
                         <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
                             ✓ Documentación generada
                         </span>
                     </div>
                     <p className="text-gray-600">El UX Agent ha creado la documentación completa en Confluence</p>
+                </div>
+
+                <div className="mb-6 rounded-xl border-2 border-purple-500 bg-gradient-to-br from-purple-600 to-indigo-700 p-6 text-white shadow-lg">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div>
+                            <h2 className="text-xl font-bold mb-1">Descargar Handoff para el Dev</h2>
+                            <p className="text-sm text-purple-100 max-w-xl">
+                                ZIP listo con README, tema MUI, rutas React Router, carpeta <code className="text-xs bg-white/15 px-1 rounded">screens/</code>,{' '}
+                                <code className="text-xs bg-white/15 px-1 rounded">api/endpoints.ts</code> y el user flow en SVG.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            disabled={zipBusy}
+                            onClick={() => void downloadHandoffZip()}
+                            className="shrink-0 inline-flex items-center justify-center gap-2 bg-white text-purple-800 font-semibold px-6 py-3 rounded-lg shadow hover:bg-purple-50 ux-focus disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            {zipBusy ? (
+                                <>
+                                    <span className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                                    Generando ZIP…
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                        />
+                                    </svg>
+                                    Descargar Handoff para el Dev
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
@@ -290,7 +365,12 @@ export default function HandoffPage() {
                     )}
 
                     {tab === 'screens' && (
-                        <HandoffScreensTab prototypeScreens={wf.prototypeScreens} flowSteps={sol.flowSteps} />
+                        <HandoffScreensTab
+                            prototypeScreens={wf.prototypeScreens}
+                            flowSteps={sol.flowSteps}
+                            flowStepLabels={sol.flowSteps}
+                            hifiWireframesHtml={wf.hifiWireframesHtml}
+                        />
                     )}
 
                     {tab === 'content' && (
@@ -302,7 +382,12 @@ export default function HandoffPage() {
                     )}
 
                     {tab === 'components' && (
-                        <HandoffComponentsTab howItSolves={sol.howItSolves} opportunities={opportunities} />
+                        <HandoffComponentsTab
+                            howItSolves={sol.howItSolves}
+                            opportunities={opportunities}
+                            tsxMuiScreens={wf.tsxMuiScreens}
+                            flowStepLabels={sol.flowSteps}
+                        />
                     )}
 
                     {tab === 'analytics' && (
@@ -349,10 +434,10 @@ export default function HandoffPage() {
 
                 <div className="pt-6 flex flex-col sm:flex-row gap-4">
                     <Link
-                        to="/prototipado"
+                        to="/codigo-mui"
                         className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-all text-center text-gray-900 ux-focus"
                     >
-                        ← Volver a Prototipado
+                        ← Volver a código TSX
                     </Link>
                     <button
                         type="button"

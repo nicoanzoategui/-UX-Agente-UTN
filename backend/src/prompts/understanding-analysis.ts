@@ -11,7 +11,14 @@ export const UNDERSTANDING_ANALYSIS_JSON_SCHEMA = `{
   "opportunities": ["string"],
   "risksAndConstraints": ["string"],
   "openQuestions": ["string"],
-  "suggestedFocusForIdeation": "string (qué priorizar en la ideación UX)"
+  "suggestedFocusForIdeation": "string (qué priorizar en la ideación UX)",
+  "availableEndpoints": [
+    {
+      "method": "GET|POST|PUT|PATCH|DELETE",
+      "path": "string (ej. /api/v1/users)",
+      "summary": "string breve opcional"
+    }
+  ]
 }`;
 
 export const UNDERSTANDING_ANALYSIS_SYSTEM = `Sos un lead de UX/producto. Analizás el contexto de una iniciativa para preparar la fase de ideación.
@@ -21,7 +28,8 @@ Reglas:
 - Basá el análisis en lo que recibís (texto, nombres de archivos listados, documentos e imágenes adjuntos).
 - Si falta información, indicá supuestos explícitos en "openQuestions" o "risksAndConstraints" sin inventar datos de negocio concretos.
 - No repitas literal largos fragmentos de los documentos; sintetizá.
-- La salida debe ser ÚNICAMENTE un objeto JSON válido (sin markdown, sin comentarios) con exactamente estas claves:
+- Si en el mensaje de usuario hay una sección **"Especificación de API"** (OpenAPI/Swagger JSON/YAML o Markdown de endpoints), leéla y completá **availableEndpoints** con los paths y métodos HTTP reales que encuentres (normalizá paths; deduplicá). Si no hay spec de API o no hay operaciones claras, omití la clave **availableEndpoints** o dejala como array vacío [].
+- La salida debe ser ÚNICAMENTE un objeto JSON válido (sin markdown, sin comentarios) con al menos estas claves (availableEndpoints es opcional):
 
 ${UNDERSTANDING_ANALYSIS_JSON_SCHEMA}`;
 

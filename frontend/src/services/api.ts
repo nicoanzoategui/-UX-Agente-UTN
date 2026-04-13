@@ -4,7 +4,7 @@ function throwConnectionHelp(): never {
     throw new ApiError(
         `No se pudo conectar con el servidor (${API_URL}). ` +
             `Levantá el backend (por ejemplo: cd backend && npm run dev). ` +
-            `Revisá VITE_API_URL en frontend/.env. ` +
+            `Revisá VITE_API_URL en el .env de la raíz del repo (o frontend/.env). ` +
             `Si abrís la app con 127.0.0.1 y antes fallaba, probá http://localhost:5173 o reiniciá el backend (CORS ya acepta ambos en desarrollo).`,
         0
     );
@@ -164,6 +164,13 @@ export type StepEWireframeOption = {
     htmlContent: string;
 };
 
+/** Endpoint documentado o extraído de OpenAPI/Swagger en Entendimiento. */
+export type ApiEndpointDescriptor = {
+    method: string;
+    path: string;
+    summary?: string;
+};
+
 /** Análisis del UX Agent — tras Entendimiento (`POST /api/analyze-understanding`). */
 export type UnderstandingAnalysisResult = {
     executiveSummary: string;
@@ -175,6 +182,8 @@ export type UnderstandingAnalysisResult = {
     risksAndConstraints: string[];
     openQuestions: string[];
     suggestedFocusForIdeation: string;
+    /** Si se subió spec de API y el modelo extrajo operaciones. */
+    availableEndpoints?: ApiEndpointDescriptor[];
 };
 
 export type IdeationSolutionDto = {
@@ -314,6 +323,106 @@ export const api = {
                 cta?: string;
             }[];
         }>,
+
+    generateUserFlow: (body: {
+        initiativeName: string;
+        jiraTicket: string;
+        squad: string;
+        analysis: UnderstandingAnalysisResult;
+        solution: IdeationSolutionDto;
+        feedback?: string;
+        currentSvg?: string;
+    }) =>
+        fetchAPI('/api/generate-user-flow', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        }) as Promise<{ success: boolean; svg: string }>,
+
+    iterateUserFlowChat: (body: {
+        initiativeName: string;
+        jiraTicket: string;
+        squad: string;
+        analysis: UnderstandingAnalysisResult;
+        solution: IdeationSolutionDto;
+        currentSvg: string;
+        history: { role: 'user' | 'assistant'; text: string }[];
+        userMessage: string;
+    }) =>
+        fetchAPI('/api/iterate-user-flow-chat', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        }) as Promise<{ success: boolean; reply: string }>,
+
+    generateFullFlowHifi: (body: {
+        initiativeName: string;
+        jiraTicket: string;
+        squad: string;
+        analysis: UnderstandingAnalysisResult;
+        solution: IdeationSolutionDto;
+        feedback?: string;
+    }) =>
+        fetchAPI('/api/generate-full-flow-hifi', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        }) as Promise<{ success: boolean; raw: string }>,
+
+    generateTsxMuiScreens: (body: {
+        initiativeName: string;
+        jiraTicket: string;
+        squad: string;
+        analysis: UnderstandingAnalysisResult;
+        solution: IdeationSolutionDto;
+        hifiHtmlScreens: string[];
+        feedback?: string;
+    }) =>
+        fetchAPI('/api/generate-tsx-mui-screens', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        }) as Promise<{ success: boolean; tsxScreens: string[] }>,
+
+    /** Descarga `handoff.zip` (README, theme, rutas, screens/, api/, user-flow.svg). */
+    generateHandoffZip: async (body: {
+        initiativeName: string;
+        analysis: UnderstandingAnalysisResult;
+        userFlowSvg: string;
+        hifiWireframesHtml: string[];
+        tsxMuiScreens: string[];
+        flowStepLabels: string[];
+    }): Promise<void> => {
+        const response = await fetchWithNetworkHelp(`${API_URL}/api/generate-handoff-zip`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) await rejectResponse(response, '/api/generate-handoff-zip');
+        const blob = await response.blob();
+        const cd = response.headers.get('Content-Disposition');
+        let filename = `${body.initiativeName.replace(/[^\w\-.]+/g, '_').slice(0, 72) || 'handoff'}-handoff.zip`;
+        const m = cd?.match(/filename="([^"]+)"/i) ?? cd?.match(/filename=([^;\s]+)/i);
+        if (m?.[1]) filename = m[1].trim();
+        const url = URL.createObjectURL(blob);
+        try {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    },
+
+    patchCardPlatformPipeline: (
+        cardId: string,
+        body: Partial<{ user_flow_svg: string | null; hifi_full_html: string | null; tsx_mui_json: string | null }>
+    ) =>
+        fetchAPI(`/api/cards/${cardId}/platform-pipeline`, {
+            method: 'PATCH',
+            body: JSON.stringify(body),
+        }) as Promise<Record<string, unknown>>,
 
     getCards: () => fetchAPI('/api/cards') as Promise<KickoffCard[]>,
 

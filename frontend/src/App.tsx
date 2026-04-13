@@ -11,8 +11,9 @@ import UnderstandingPage from './pages/UnderstandingPage';
 import UxAgentAnalysisPage from './pages/UxAgentAnalysisPage';
 import IdeacionPage from './pages/IdeacionPage';
 import SolutionIterationPage from './pages/SolutionIterationPage';
-import PrototipadoPage from './pages/PrototipadoPage';
-import PrototypeIterationPage from './pages/PrototypeIterationPage';
+import UserFlowPage from './pages/UserFlowPage';
+import WireframesHiFiPage from './pages/WireframesHiFiPage';
+import CodigoMuiPage from './pages/CodigoMuiPage';
 import HandoffPage from './pages/HandoffPage';
 import ProjectSummaryPage from './pages/ProjectSummaryPage';
 
@@ -62,8 +63,9 @@ function AppRoutes() {
                         <Route path="analisis" element={<UxAgentAnalysisPage />} />
                         <Route path="ideacion" element={<IdeacionPage />} />
                         <Route path="ideacion/iterar/:solutionIndex" element={<SolutionIterationPage />} />
-                        <Route path="prototipado" element={<PrototipadoPage />} />
-                        <Route path="prototipado/iterar" element={<PrototypeIterationPage />} />
+                        <Route path="user-flow" element={<UserFlowPage />} />
+                        <Route path="wireframes-hifi" element={<WireframesHiFiPage />} />
+                        <Route path="codigo-mui" element={<CodigoMuiPage />} />
                         <Route path="handoff" element={<HandoffPage />} />
                         <Route path="resumen" element={<ProjectSummaryPage />} />
                     </Route>
@@ -78,7 +80,12 @@ const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 export default function App() {
     const tree = (
-        <BrowserRouter>
+        <BrowserRouter
+            future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+            }}
+        >
             <AuthProvider>
                 <ToastProvider>
                     <AppRoutes />
