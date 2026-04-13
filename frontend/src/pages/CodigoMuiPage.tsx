@@ -34,12 +34,54 @@ export default function CodigoMuiPage() {
         setWf(w);
     }, [navigate]);
 
+    /** Primera carga: generar TSX desde los wireframes HiFi sin CTA manual. */
+    useEffect(() => {
+        if (!wf?.hifiWireframesApproved || !wf.analysis) return;
+        const analysis = wf.analysis;
+        const solIdx = wf.selectedSolutionIndex;
+        const sol =
+            solIdx != null && solIdx >= 1 && solIdx <= 3 ? wf.ideationSolutions?.[solIdx - 1] : undefined;
+        if (!sol) return;
+        const hifiHtml = wf.hifiWireframesHtml ?? [];
+        if (hifiHtml.length === 0) return;
+        if ((wf.tsxMuiScreens?.length ?? 0) > 0) return;
+
+        setBusy(true);
+        let cancelled = false;
+        void (async () => {
+            try {
+                const { tsxScreens } = await api.generateTsxMuiScreens({
+                    initiativeName: wf.initiativeName,
+                    jiraTicket: wf.jiraTicket,
+                    squad: wf.squad,
+                    analysis,
+                    solution: sol,
+                    hifiHtmlScreens: hifiHtml,
+                });
+                if (cancelled) return;
+                patchWorkflow({ tsxMuiScreens: tsxScreens });
+                setWf(loadWorkflow());
+                toast(`Se generaron ${tsxScreens.length} archivo(s) TSX.`, 'success');
+            } catch (e) {
+                if (cancelled) return;
+                const msg = e instanceof ApiError ? e.message : 'Error al generar TSX.';
+                toast(msg, 'error');
+            } finally {
+                if (!cancelled) setBusy(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // `toast` estable en la práctica; incluirlo re-dispararía el efecto y duplicaría la API.
+    }, [wf]);
+
     useEffect(() => {
         const n = tsx?.length ?? 0;
         if (n > 0) setTab((t) => Math.min(t, n - 1));
     }, [tsx?.length]);
 
-    async function generate() {
+    async function regenerateWithFeedback() {
         if (!wf || !solution || !wf.analysis || !hifi?.length) return;
         setBusy(true);
         try {
@@ -55,7 +97,7 @@ export default function CodigoMuiPage() {
             patchWorkflow({ tsxMuiScreens: tsxScreens });
             setWf(loadWorkflow());
             setFeedback('');
-            toast(`Se generaron ${tsxScreens.length} archivo(s) TSX.`, 'success');
+            toast(`Se actualizaron ${tsxScreens.length} archivo(s) TSX.`, 'success');
         } catch (e) {
             const msg = e instanceof ApiError ? e.message : 'Error al generar TSX.';
             toast(msg, 'error');
@@ -104,26 +146,34 @@ export default function CodigoMuiPage() {
             <div className="bg-white rounded-lg shadow-sm p-8 fade-in">
                 <div className="mb-6">
                     <h1 className="text-3xl font-bold text-gray-900">5. Código TSX (MUI v5)</h1>
-                    <p className="text-gray-600 mt-1">Un componente por pantalla, derivado de los wireframes HiFi.</p>
+                    <p className="text-gray-600 mt-1">
+                        Un componente por pantalla, derivado de los wireframes HiFi. El código se genera solo al entrar;
+                        podés regenerarlo con feedback si querés iterar.
+                    </p>
                 </div>
 
-                <div className="mb-6 space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">Feedback opcional</label>
-                    <textarea
-                        value={feedback}
-                        onChange={(e) => setFeedback(e.target.value)}
-                        rows={2}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
-                    />
-                    <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void generate()}
-                        className="gradient-bg text-white px-6 py-2 rounded-lg font-semibold hover:opacity-90 ux-focus disabled:opacity-50"
-                    >
-                        {busy ? 'Generando…' : n ? 'Regenerar TSX' : 'Generar TSX'}
-                    </button>
-                </div>
+                {n > 0 ? (
+                    <div className="mb-6 space-y-3">
+                        <label className="block text-sm font-medium text-gray-700">
+                            Feedback opcional para regenerar TSX
+                        </label>
+                        <textarea
+                            value={feedback}
+                            onChange={(e) => setFeedback(e.target.value)}
+                            rows={2}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                            placeholder="Ej.: usar OutlinedInput en pantalla 2, más espacio entre secciones…"
+                        />
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void regenerateWithFeedback()}
+                            className="gradient-bg text-white px-6 py-2 rounded-lg font-semibold hover:opacity-90 ux-focus disabled:opacity-50"
+                        >
+                            {busy ? 'Generando…' : 'Regenerar TSX con feedback'}
+                        </button>
+                    </div>
+                ) : null}
 
                 {n > 0 ? (
                     <div className="mb-8 border border-gray-200 rounded-lg overflow-hidden">
@@ -154,8 +204,24 @@ export default function CodigoMuiPage() {
                             {tsx![tab]}
                         </pre>
                     </div>
+                ) : busy ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-gray-600 text-sm gap-3 mb-8 border border-gray-200 rounded-lg bg-gray-50">
+                        <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                        Generando código TSX a partir de los wireframes HiFi…
+                    </div>
                 ) : (
-                    <p className="text-sm text-gray-500 mb-8">Todavía no hay código generado.</p>
+                    <div className="mb-8 space-y-3">
+                        <p className="text-sm text-gray-500">
+                            No se pudo generar el código automáticamente. Reintentá o volvé a wireframes HiFi.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => void regenerateWithFeedback()}
+                            className="gradient-bg text-white px-6 py-2 rounded-lg font-semibold hover:opacity-90 ux-focus"
+                        >
+                            Reintentar generación
+                        </button>
+                    </div>
                 )}
 
                 <div className="flex flex-col sm:flex-row gap-4">
