@@ -10,7 +10,7 @@
   "permissions": ["teamlibrary"],
   "networkAccess": {
     "allowedDomains": ["https://ux-agente-production.up.railway.app"],
-    "devAllowedDomains": ["http://localhost:3001", "http://127.0.0.1:3001"],
+    "devAllowedDomains": ["http://localhost:3001"],
     "reasoning": "Descarga jobs y llama al API de render desde el backend UX Agente."
   }
 }
