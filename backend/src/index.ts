@@ -65,14 +65,42 @@ function devLocalhostOrigin(origin: string | undefined, callback: (err: Error | 
     callback(new Error('Not allowed by CORS'));
 }
 
+/**
+ * Producción: lista explícita + dominios Figma (el plugin a veces envía `https://figma.com` sin `www`,
+ * u orígenes sandboxed como la cadena literal `null`). Sin `Access-Control-Allow-Origin` el fetch del * plugin falla con "Failed to fetch" aunque el servidor responda 200.
+ */
+function productionCorsOrigin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void): void {
+    if (!origin) {
+        callback(null, true);
+        return;
+    }
+    if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+    }
+    if (origin === 'null') {
+        callback(null, true);
+        return;
+    }
+    try {
+        const { hostname, protocol } = new URL(origin);
+        if (protocol !== 'https:' && protocol !== 'http:') {
+            callback(new Error('Not allowed by CORS'));
+            return;
+        }
+        if (hostname === 'figma.com' || hostname.endsWith('.figma.com')) {
+            callback(null, true);
+            return;
+        }
+    } catch {
+        /* URL inválida */
+    }
+    callback(new Error('Not allowed by CORS'));
+}
+
 app.use(
     cors({
-        origin:
-            config.NODE_ENV === 'production'
-                ? allowedOrigins.length === 1
-                    ? allowedOrigins[0]
-                    : allowedOrigins
-                : devLocalhostOrigin,
+        origin: config.NODE_ENV === 'production' ? productionCorsOrigin : devLocalhostOrigin,
         credentials: true,
         exposedHeaders: [...corsExposedHeaders],
     })

@@ -139,6 +139,7 @@ export function corsAllowedOrigins(): string[] {
         .filter(Boolean);
     for (const o of figmaExtra) set.add(o);
     set.add('https://www.figma.com');
+    set.add('https://figma.com');
     return Array.from(set);
 }
 
