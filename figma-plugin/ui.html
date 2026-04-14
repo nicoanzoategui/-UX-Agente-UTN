@@ -122,16 +122,7 @@
 
       document.getElementById('run').onclick = () => {
         setStatus('');
-        parent.postMessage(
-          {
-            pluginMessage: {
-              type: 'save-api-base',
-              apiBase: apiBaseEl.value.trim(),
-              renderSecret: renderSecretEl.value.trim(),
-            },
-          },
-          '*'
-        );
+        /* Un solo mensaje: evita carreras entre save y build; el job solo se consume en el handler build del main. */
         parent.postMessage(
           {
             pluginMessage: {

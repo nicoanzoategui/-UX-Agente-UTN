@@ -1,5 +1,8 @@
 figma.showUI(__html__, { width: 440, height: 680 });
 
+/** Evita dos GET /figma-build-job/ solapados (doble clic o mensajes duplicados). */
+let figmaBuildJobFetchInFlight = false;
+
 async function loadDefaultFont() {
   const candidates = [
     { family: 'Inter', style: 'Regular' },
@@ -10,7 +13,7 @@ async function loadDefaultFont() {
     try {
       await figma.loadFontAsync(f);
       return f;
-    } catch {
+    } catch (e) {
       /* siguiente */
     }
   }
@@ -94,7 +97,7 @@ async function applyRenderNode(parent, node) {
       }
       if (node.name) inst.name = String(node.name).slice(0, 120);
       parent.appendChild(inst);
-    } catch {
+    } catch (e) {
       const r = figma.createRectangle();
       r.name = 'INSTANCE ? ' + String(node.componentKey || '').slice(0, 36);
       r.x = typeof node.x === 'number' ? node.x : 0;
@@ -121,6 +124,7 @@ async function fetchRenderNodes(apiBase, renderSecret, body) {
 
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'ui-ready') {
+    /* Solo lectura local + init UI. Nunca fetch al API del job. */
     try {
       const apiBase = await figma.clientStorage.getAsync('ux_agente_api_base');
       const renderSecret = await figma.clientStorage.getAsync('ux_agente_render_secret');
@@ -129,7 +133,7 @@ figma.ui.onmessage = async (msg) => {
         apiBase: typeof apiBase === 'string' ? apiBase : '',
         renderSecret: typeof renderSecret === 'string' ? renderSecret : '',
       });
-    } catch {
+    } catch (e) {
       figma.ui.postMessage({ type: 'init', apiBase: '', renderSecret: '' });
     }
     return;
@@ -138,7 +142,7 @@ figma.ui.onmessage = async (msg) => {
     try {
       await figma.clientStorage.setAsync('ux_agente_api_base', String(msg.apiBase || '').trim());
       await figma.clientStorage.setAsync('ux_agente_render_secret', String(msg.renderSecret || '').trim());
-    } catch {
+    } catch (e) {
       /* ignore */
     }
     return;
@@ -149,6 +153,14 @@ figma.ui.onmessage = async (msg) => {
   }
   if (msg.type !== 'build') return;
 
+  if (figmaBuildJobFetchInFlight) {
+    figma.ui.postMessage({
+      type: 'error',
+      text: 'Ya hay una importación en curso. Esperá a que termine o cerrá y volvé a abrir el plugin.',
+    });
+    return;
+  }
+
   const apiBase = String(msg.apiBase || '').trim().replace(/\/$/, '');
   const jobId = String(msg.jobId || '').trim();
   const secret = String(msg.secret || '').trim();
@@ -158,12 +170,25 @@ figma.ui.onmessage = async (msg) => {
     return;
   }
 
+  figmaBuildJobFetchInFlight = true;
   try {
+    try {
+      await figma.clientStorage.setAsync('ux_agente_api_base', apiBase);
+      await figma.clientStorage.setAsync('ux_agente_render_secret', renderSecret);
+    } catch {
+      /* ignore */
+    }
+
     const url = `${apiBase}/api/figma-build-job/${encodeURIComponent(jobId)}?secret=${encodeURIComponent(secret)}`;
     const res = await fetch(url);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      figma.ui.postMessage({ type: 'error', text: data.error || res.statusText || String(res.status) });
+      const errText = data.error || res.statusText || String(res.status);
+      const hint =
+        res.status === 404 || /consumido|inválido|expirado/i.test(String(errText))
+          ? ' Si ya ejecutaste «Crear frames» con este job, generá uno nuevo en la web (cada job es de un solo uso).'
+          : '';
+      figma.ui.postMessage({ type: 'error', text: errText + hint });
       return;
     }
     const payload = data.payload;
@@ -255,5 +280,7 @@ figma.ui.onmessage = async (msg) => {
   } catch (e) {
     const err = e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e);
     figma.ui.postMessage({ type: 'error', text: err });
+  } finally {
+    figmaBuildJobFetchInFlight = false;
   }
 };
