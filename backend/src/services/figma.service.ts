@@ -372,6 +372,9 @@ type FigmaComponentsApiMeta = {
 const MAX_HIFI_HTML_CHARS = 100_000;
 const MAX_COMPONENTS_IN_PROMPT = 220;
 
+/** El aviso de catálogo vía GET /files se emite una vez por design system (evita 8 líneas iguales en un job). */
+const designSystemCatalogSourceNotified = new Set<string>();
+
 /**
  * Lista componentes publicados del archivo del design system (REST).
  * @see https://www.figma.com/developers/api#get-file-components-endpoint
@@ -460,6 +463,28 @@ function coerceNumber(v: unknown): number | undefined {
     return undefined;
 }
 
+/** Si `type` viene vacío o ausente, inferir desde campos típicos de Gemini. */
+function inferFigmaRenderNodeType(o: Record<string, unknown>): string {
+    const raw = typeof o.type === 'string' ? o.type.trim().toUpperCase() : '';
+    if (raw) return raw;
+    const ck = typeof o.componentKey === 'string' ? o.componentKey.trim() : '';
+    if (ck) return 'INSTANCE';
+    if (
+        (typeof o.text === 'string' && o.text.trim()) ||
+        (typeof o.characters === 'string' && o.characters.trim()) ||
+        (typeof o.content === 'string' && o.content.trim())
+    ) {
+        return 'TEXT';
+    }
+    if ('children' in o && Array.isArray(o.children)) return 'FRAME';
+    const w = coerceNumber(o.width);
+    const h = coerceNumber(o.height);
+    const x = coerceNumber(o.x);
+    const y = coerceNumber(o.y);
+    if (w !== undefined && h !== undefined && x !== undefined && y !== undefined) return 'RECTANGLE';
+    return '';
+}
+
 /**
  * Parsea JSON del modelo: quita fences, trailing commas típicas, y subcadena { … }.
  */
@@ -500,8 +525,13 @@ function normalizeFigmaRenderNode(raw: unknown, path: string, warnings: string[]
         return null;
     }
     const o = raw as Record<string, unknown>;
-    const type = typeof o.type === 'string' ? o.type.toUpperCase() : '';
+    const type = inferFigmaRenderNodeType(o);
     const name = typeof o.name === 'string' ? o.name : undefined;
+
+    if (!type) {
+        warnings.push(`${path}: tipo desconocido o vacío (sin campos para inferir).`);
+        return null;
+    }
 
     if (type === 'TEXT') {
         const textRaw =
@@ -665,9 +695,12 @@ export async function generateFigmaNodesFromHtml(input: {
             const fromFile = await fetchFigmaFileComponentsFromFileMap(input.designSystemFileKey, token);
             if (fromFile.length) {
                 components = fromFile;
-                warnings.push(
-                    'Catálogo de componentes obtenido desde GET /v1/files (mapa `components`); el endpoint /components estaba vacío o falló.'
-                );
+                if (!designSystemCatalogSourceNotified.has(input.designSystemFileKey)) {
+                    designSystemCatalogSourceNotified.add(input.designSystemFileKey);
+                    warnings.push(
+                        'Catálogo de componentes obtenido desde GET /v1/files (mapa `components`); el endpoint /components estaba vacío o falló.'
+                    );
+                }
             }
         } catch (e) {
             warnings.push(`Figma GET archivo (componentes en mapa): ${(e as Error)?.message || String(e)}`);
@@ -687,7 +720,7 @@ export async function generateFigmaNodesFromHtml(input: {
     const system = `Sos un asistente que traduce wireframes HTML (Tailwind-ish) a un árbol JSON de nodos para el plugin API de Figma.
 Reglas:
 - Devolvé SOLO JSON válido con forma exacta: { "nodes": [ ... ] } (sin markdown, sin comas finales).
-- Tipos permitidos por nodo: FRAME, TEXT, RECTANGLE, INSTANCE.
+- Tipos permitidos por nodo: FRAME, TEXT, RECTANGLE, INSTANCE (siempre incluí "type" en cada nodo; no lo dejes vacío).
 - Coordenadas x,y,width,height deben ser números JSON (no strings). Origen arriba-izquierda, y hacia abajo.
 - Cada TEXT debe incluir "text" (string) y números "x", "y" (usá 0 si no importa la posición exacta).
 - Usá INSTANCE solo cuando un bloque HTML corresponde claramente a un componente del catálogo; copiá el "key" exacto del catálogo en componentKey.
