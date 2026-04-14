@@ -114,6 +114,8 @@ async function fetchRenderNodes(apiBase, renderSecret, body) {
   if (renderSecret) headers['X-UX-Agent-Figma-Render-Secret'] = renderSecret;
   const res = await fetch(`${apiBase}/api/figma-render-screen`, {
     method: 'POST',
+    mode: 'cors',
+    credentials: 'omit',
     headers,
     body: JSON.stringify(body),
   });
@@ -175,12 +177,12 @@ figma.ui.onmessage = async (msg) => {
     try {
       await figma.clientStorage.setAsync('ux_agente_api_base', apiBase);
       await figma.clientStorage.setAsync('ux_agente_render_secret', renderSecret);
-    } catch {
+    } catch (_e) {
       /* ignore */
     }
 
     const url = `${apiBase}/api/figma-build-job/${encodeURIComponent(jobId)}?secret=${encodeURIComponent(secret)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { method: 'GET', mode: 'cors', credentials: 'omit' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const errText = data.error || res.statusText || String(res.status);
