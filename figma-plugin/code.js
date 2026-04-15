@@ -252,8 +252,18 @@ figma.ui.onmessage = async (msg) => {
     let x = startX;
     const created = [];
     const warnings = [];
+    const screens = Array.isArray(payload.screens) ? payload.screens : [];
+    const totalScreens = screens.length;
 
-    for (const s of payload.screens) {
+    for (let i = 0; i < screens.length; i++) {
+      const s = screens[i];
+      figma.ui.postMessage({
+        type: 'build-progress',
+        current: i + 1,
+        total: totalScreens,
+        screenIndex: s.screenIndex,
+        name: String(s.name || '').slice(0, 100),
+      });
       const frame = figma.createFrame();
       frame.name = `${s.screenIndex}. ${s.name}`.slice(0, 120);
       frame.resize(w, h);

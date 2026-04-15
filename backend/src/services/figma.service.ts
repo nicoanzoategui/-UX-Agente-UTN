@@ -375,6 +375,56 @@ const MAX_COMPONENTS_IN_PROMPT = 220;
 /** El aviso de catálogo vía GET /files se emite una vez por design system (evita 8 líneas iguales en un job). */
 const designSystemCatalogSourceNotified = new Set<string>();
 
+type DesignSystemComponentRow = { key: string; name: string; description: string };
+
+/** Misma lista de componentes para todas las pantallas de un job: evita 8× GET /v1/files (muy pesado). */
+const designSystemComponentsCache = new Map<string, { list: DesignSystemComponentRow[]; until: number }>();
+const DESIGN_SYSTEM_COMPONENTS_CACHE_MS = 15 * 60 * 1000;
+
+async function loadDesignSystemComponentsForRender(
+    fileKey: string,
+    token: string,
+    warnings: string[]
+): Promise<DesignSystemComponentRow[]> {
+    const now = Date.now();
+    const hit = designSystemComponentsCache.get(fileKey);
+    if (hit && hit.until > now && hit.list.length > 0) {
+        return hit.list;
+    }
+
+    let components: DesignSystemComponentRow[] = [];
+    try {
+        components = await fetchFigmaFileComponentsList(fileKey, token);
+    } catch (e) {
+        warnings.push(`Figma GET …/components: ${(e as Error)?.message || String(e)}`);
+    }
+    if (!components.length) {
+        try {
+            const fromFile = await fetchFigmaFileComponentsFromFileMap(fileKey, token);
+            if (fromFile.length) {
+                components = fromFile;
+                if (!designSystemCatalogSourceNotified.has(fileKey)) {
+                    designSystemCatalogSourceNotified.add(fileKey);
+                    warnings.push(
+                        'Catálogo de componentes obtenido desde GET /v1/files (mapa `components`); el endpoint /components estaba vacío o falló.'
+                    );
+                }
+            }
+        } catch (e) {
+            warnings.push(`Figma GET archivo (componentes en mapa): ${(e as Error)?.message || String(e)}`);
+        }
+    }
+    if (!components.length) {
+        warnings.push(
+            'No se obtuvieron componentes del design system (publicá componentes al team library o verificá FIGMA_ACCESS_TOKEN con lectura del archivo).'
+        );
+    }
+    if (components.length > 0) {
+        designSystemComponentsCache.set(fileKey, { list: components, until: now + DESIGN_SYSTEM_COMPONENTS_CACHE_MS });
+    }
+    return components;
+}
+
 /**
  * Lista componentes publicados del archivo del design system (REST).
  * @see https://www.figma.com/developers/api#get-file-components-endpoint
@@ -684,33 +734,7 @@ export async function generateFigmaNodesFromHtml(input: {
         return { nodes: [], warnings: ['HTML vacío.'] };
     }
 
-    let components: { key: string; name: string; description: string }[] = [];
-    try {
-        components = await fetchFigmaFileComponentsList(input.designSystemFileKey, token);
-    } catch (e) {
-        warnings.push(`Figma GET …/components: ${(e as Error)?.message || String(e)}`);
-    }
-    if (!components.length) {
-        try {
-            const fromFile = await fetchFigmaFileComponentsFromFileMap(input.designSystemFileKey, token);
-            if (fromFile.length) {
-                components = fromFile;
-                if (!designSystemCatalogSourceNotified.has(input.designSystemFileKey)) {
-                    designSystemCatalogSourceNotified.add(input.designSystemFileKey);
-                    warnings.push(
-                        'Catálogo de componentes obtenido desde GET /v1/files (mapa `components`); el endpoint /components estaba vacío o falló.'
-                    );
-                }
-            }
-        } catch (e) {
-            warnings.push(`Figma GET archivo (componentes en mapa): ${(e as Error)?.message || String(e)}`);
-        }
-    }
-    if (!components.length) {
-        warnings.push(
-            'No se obtuvieron componentes del design system (publicá componentes al team library o verificá FIGMA_ACCESS_TOKEN con lectura del archivo).'
-        );
-    }
+    const components = await loadDesignSystemComponentsForRender(input.designSystemFileKey, token, warnings);
     const catalog = components.slice(0, MAX_COMPONENTS_IN_PROMPT).map((c) => ({
         key: c.key,
         name: c.name,
