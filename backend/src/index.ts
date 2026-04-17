@@ -115,6 +115,7 @@ app.use('/api/cards', cardsRoutes);
 app.use('/api', figmaBuildRoutes);
 app.use('/api', agentRoutes);
 
+/** 200 siempre si el proceso responde (ALB/AWS exige 200–399; 503 marca el target unhealthy). */
 app.get('/health', async (_req, res) => {
     const timestamp = new Date().toISOString();
     const base = {
@@ -126,7 +127,7 @@ app.get('/health', async (_req, res) => {
         await queryOne('SELECT 1 as ok');
         res.json({ status: 'ok', database: 'ok', ...base });
     } catch {
-        res.status(503).json({ status: 'degraded', database: 'error', ...base });
+        res.status(200).json({ status: 'degraded', database: 'error', ...base });
     }
 });
 
