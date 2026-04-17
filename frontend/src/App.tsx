@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import AppFooter from './components/AppFooter';
 import PlatformNav from './components/platform/PlatformNav';
 import { getCurrentInitiativeId } from './lib/initiativesSession';
+import { getGoogleClientId } from './lib/runtimeEnv';
 import Login from './pages/Login';
 import DashboardPage from './pages/DashboardPage';
 import UnderstandingPage from './pages/UnderstandingPage';
@@ -74,7 +75,7 @@ function AppRoutes() {
     );
 }
 
-const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const googleClientId = getGoogleClientId();
 
 export default function App() {
     const tree = (

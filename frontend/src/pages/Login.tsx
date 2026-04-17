@@ -3,11 +3,11 @@ import { GoogleLogin } from '@react-oauth/google';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { getGoogleClientId, isAuthDisabledRuntime } from '../lib/runtimeEnv';
 import { api } from '../services/api';
 
-const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-const authBypass =
-    import.meta.env.VITE_AUTH_DISABLED === '1' || import.meta.env.VITE_AUTH_DISABLED === 'true';
+const googleClientId = getGoogleClientId();
+const authBypass = isAuthDisabledRuntime();
 
 export default function Login() {
     const { user, loading, refresh } = useAuth();

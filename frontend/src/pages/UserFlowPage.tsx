@@ -8,12 +8,6 @@ import { api, ApiError } from '../services/api';
 
 type ChatTurn = { role: 'user' | 'assistant'; text: string };
 
-/**
- * Candado module-scope para deduplicar auto-generación (misma sesión / solución).
- * El efecto añade y quita la clave alrededor de la llamada a la API.
- */
-const userFlowAutoGenLocks = new Set<string>();
-
 export default function UserFlowPage() {
     const navigate = useNavigate();
     const toast = useToast();
@@ -65,14 +59,9 @@ export default function UserFlowPage() {
             return;
         }
         // Sin SVG en sesión: generación automática al montar (sin botón manual).
-        const lockKey = `auto:${w.initiativeName}:${w.selectedSolutionIndex}`;
         setGenBusy(true);
         let cancelled = false;
         void (async () => {
-            if (userFlowAutoGenLocks.has(lockKey)) {
-                return;
-            }
-            userFlowAutoGenLocks.add(lockKey);
             try {
                 const { svg: next } = await api.generateUserFlow({
                     initiativeName: w.initiativeName,
@@ -94,7 +83,6 @@ export default function UserFlowPage() {
                 toast(msg, 'error');
                 setMessages((m) => [...m, { role: 'assistant', text: `No pude generar el diagrama: ${msg}` }]);
             } finally {
-                userFlowAutoGenLocks.delete(lockKey);
                 if (!cancelled) setGenBusy(false);
             }
         })();
@@ -231,8 +219,8 @@ export default function UserFlowPage() {
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">3. User flow</h1>
                         <p className="text-gray-600 mt-1">
-                            El diagrama se genera automáticamente al entrar. Podés afinarlo con el chat y «Actualizar
-                            diagrama».
+                            El diagrama se genera automáticamente al entrar (suele tardar ~30–90 s con Gemini; en el primer
+                            intento puede demorar más). Podés afinarlo con el chat y «Actualizar diagrama».
                         </p>
                     </div>
                     <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium w-fit">
@@ -251,11 +239,11 @@ export default function UserFlowPage() {
                     </button>
                 </div>
 
-                <div className="border border-gray-200 rounded-lg overflow-hidden mb-8 bg-gray-50 relative">
-                    <div className="bg-white p-4 overflow-auto min-h-[320px] relative">
+                <div className="border border-gray-200 rounded-lg overflow-hidden mb-8 bg-gray-50 relative pr-12">
+                    <div className="bg-white p-4 pt-4 pb-6 overflow-x-auto overflow-y-auto min-h-[320px] max-h-[min(70vh,720px)] relative isolate">
                         {svg.trim() ? (
                             <div
-                                className={`max-w-full [&_svg]:h-auto [&_svg]:max-w-none ${
+                                className={`user-flow-svg-host inline-block min-w-0 max-w-none [&_svg]:block [&_svg]:h-auto [&_svg]:max-w-none [&_svg]:shrink-0 ${
                                     genBusy ? 'opacity-40 pointer-events-none' : ''
                                 }`}
                                 dangerouslySetInnerHTML={{ __html: svg }}
@@ -270,7 +258,9 @@ export default function UserFlowPage() {
                                 }`}
                             >
                                 <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                                {svg.trim() ? 'Actualizando diagrama…' : 'Generando diagrama…'}
+                                {svg.trim()
+                                    ? 'Actualizando diagrama…'
+                                    : 'Generando diagrama con Gemini… (30–120 s es normal)'}
                             </div>
                         ) : null}
                     </div>
@@ -278,7 +268,7 @@ export default function UserFlowPage() {
                         <button
                             type="button"
                             onClick={() => setExpandedView(true)}
-                            className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-20 bg-purple-600 text-white rounded-full w-10 h-10 shadow-lg hover:bg-purple-700 ux-focus"
+                            className="absolute right-3 top-3 z-20 bg-purple-600 text-white rounded-full w-10 h-10 shadow-lg hover:bg-purple-700 ux-focus"
                             aria-label="Expandir diagrama"
                             title="Expandir"
                         >
@@ -302,7 +292,7 @@ export default function UserFlowPage() {
                             </div>
                             <div className="flex-1 overflow-auto p-4 bg-gray-50">
                                 <div
-                                    className="inline-block bg-white border border-gray-200 rounded p-3 [&_svg]:h-auto [&_svg]:max-w-none"
+                                    className="user-flow-svg-host inline-block min-w-0 bg-white border border-gray-200 rounded p-3 [&_svg]:block [&_svg]:h-auto [&_svg]:max-w-none"
                                     dangerouslySetInnerHTML={{ __html: svg }}
                                 />
                             </div>

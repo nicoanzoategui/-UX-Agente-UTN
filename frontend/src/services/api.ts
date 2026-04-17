@@ -1,8 +1,9 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { getApiBaseUrl } from '../lib/runtimeEnv';
 
 function throwConnectionHelp(): never {
+    const base = getApiBaseUrl();
     throw new ApiError(
-        `No se pudo conectar con el servidor (${API_URL}). ` +
+        `No se pudo conectar con el servidor (${base}). ` +
             `Levantá el backend (por ejemplo: cd backend && npm run dev). ` +
             `Revisá VITE_API_URL en el .env de la raíz del repo (o frontend/.env). ` +
             `Si abrís la app con 127.0.0.1 y antes fallaba, probá http://localhost:5173 o reiniciá el backend (CORS ya acepta ambos en desarrollo).`,
@@ -91,7 +92,7 @@ export type AuthUser = {
 
 async function fetchAPI(endpoint: string, options?: RequestInit) {
     const isForm = options?.body instanceof FormData;
-    const response = await fetchWithNetworkHelp(`${API_URL}${endpoint}`, {
+    const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}${endpoint}`, {
         ...options,
         credentials: 'include',
         headers: {
@@ -208,7 +209,7 @@ export type FigmaOrchestrationErrorDto = {
 export const api = {
     getMe: async (): Promise<{ user: AuthUser | null }> => {
         try {
-            const response = await fetch(`${API_URL}/api/auth/me`, { credentials: 'include' });
+            const response = await fetch(`${getApiBaseUrl()}/api/auth/me`, { credentials: 'include' });
             if (!response.ok) {
                 return { user: null };
             }
@@ -234,7 +235,7 @@ export const api = {
     logout: () => fetchAPI('/api/auth/logout', { method: 'POST' }) as Promise<{ ok: boolean }>,
 
     getHealth: async (): Promise<HealthResponse> => {
-        const response = await fetchWithNetworkHelp(`${API_URL}/health`);
+        const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}/health`);
         const text = await response.text();
         if (!text) {
             return { status: 'unknown', database: 'unknown' };
@@ -247,7 +248,7 @@ export const api = {
     },
 
     analyzeUnderstanding: async (formData: FormData) => {
-        const response = await fetchWithNetworkHelp(`${API_URL}/api/analyze-understanding`, {
+        const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}/api/analyze-understanding`, {
             method: 'POST',
             body: formData,
             credentials: 'include',
@@ -459,7 +460,7 @@ export const api = {
         figmaScreensMeta?: FigmaScreenMetaDto[];
         flowStepLabels: string[];
     }): Promise<void> => {
-        const response = await fetchWithNetworkHelp(`${API_URL}/api/generate-handoff-zip`, {
+        const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}/api/generate-handoff-zip`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -512,7 +513,7 @@ export const api = {
         }) as Promise<KickoffCard>,
 
     deleteCard: async (id: string) => {
-        const response = await fetchWithNetworkHelp(`${API_URL}/api/cards/${id}`, {
+        const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}/api/cards/${id}`, {
             method: 'DELETE',
             credentials: 'include',
         });
@@ -533,7 +534,7 @@ export const api = {
         fd.append('title', title);
         if (transcript.trim()) fd.append('transcript', transcript);
         fd.append('transcript_file', file);
-        const response = await fetchWithNetworkHelp(`${API_URL}/api/cards/upload`, {
+        const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}/api/cards/upload`, {
             method: 'POST',
             body: fd,
             credentials: 'include',
@@ -557,7 +558,7 @@ export const api = {
     patchTranscriptFile: async (id: string, file: File) => {
         const fd = new FormData();
         fd.append('transcript_file', file);
-        const response = await fetchWithNetworkHelp(`${API_URL}/api/cards/${id}/transcript/file`, {
+        const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}/api/cards/${id}/transcript/file`, {
             method: 'PATCH',
             body: fd,
             credentials: 'include',
@@ -623,7 +624,7 @@ export const api = {
         }) as Promise<{ success: boolean; options: StepEWireframeOption[] }>,
 
     downloadCardExport: async (id: string) => {
-        const response = await fetchWithNetworkHelp(`${API_URL}/api/cards/${id}/export`, {
+        const response = await fetchWithNetworkHelp(`${getApiBaseUrl()}/api/cards/${id}/export`, {
             credentials: 'include',
         });
         if (!response.ok) await rejectResponse(response, `/api/cards/${id}/export`);

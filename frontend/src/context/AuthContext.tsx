@@ -9,9 +9,8 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAllUxAgentSessionStorage } from '../lib/initiativesSession';
+import { getApiBaseUrl } from '../lib/runtimeEnv';
 import { api, setUnauthorizedHandler, type AuthUser } from '../services/api';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 /** Detecta cambio de cuenta Google en el mismo navegador y evita mezclar iniciativas. */
 const UX_AGENT_AUTH_USER_KEY = 'ux-agent-active-auth-user-id';
 
@@ -34,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null);
             const path = `${window.location.pathname}${window.location.search}`;
             const from = path.startsWith('/login') ? '/' : path;
-            void fetch(`${API_URL}/api/auth/logout`, {
+            void fetch(`${getApiBaseUrl()}/api/auth/logout`, {
                 method: 'POST',
                 credentials: 'include',
             }).catch(() => {

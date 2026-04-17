@@ -14,9 +14,10 @@ Diagrama profesional: fondo BLANCO (#ffffff), paleta azul/gris (nodos #f1f5f9 a 
 ## Nodos
 - Un rectángulo redondeado (rx/ry ≥ 12) por paso del flujo / pantalla lógica.
 - **Padding interno generoso** (equivalente visual ≥ 20px): el texto nunca pegado al borde.
+- **Texto multilínea obligatorio**: el elemento \`<text>\` del SVG **no hace wrap automático**. Para cada nodo, partí el copy en **2–4 líneas** usando **\`<tspan x="..." y="...">\`** (misma \`x\` centrada en el nodo, \`y\` en líneas sucesivas con ~18–20px de separación) o varios \`<text>\` apilados. **Prohibido** un único \`<text>\` con una cadena larga en una sola línea (se superpone al navegar).
 - **Sombra suave** en nodos (filtro drop-shadow sutil o rect duplicado muy suave; no exagerar).
 - **Tipografía grande y legible**: títulos de nodo ~18–22px equivalente (font-size en px del SVG), peso semibold; subtítulos opcionales más chicos pero ≥ 13px.
-- Máximo ~2 líneas de título por nodo; si el texto es largo, truncá con "…" en el nodo (no desbordes).
+- Máximo ~4 líneas de título por nodo; si el texto es muy largo, truncá con "…" (no desbordes del rect).
 
 ## Conexiones
 - Flechas **ortogonales** (solo segmentos horizontales y verticales) o **curvas suaves** tipo curvas Bézier cubic con handles cortos; **prohibido** usar diagonales largas que crucen otros nodos o otros trazos.
@@ -29,7 +30,8 @@ Diagrama profesional: fondo BLANCO (#ffffff), paleta azul/gris (nodos #f1f5f9 a 
 - Texto del label breve (máx ~36 caracteres), font-size ≥ 12px.
 
 ## Salida
-SOLO el fragmento SVG (desde <svg hasta </svg>). Sin markdown, sin comentarios fuera del SVG, sin explicación.`;
+SOLO el fragmento SVG (desde <svg hasta </svg>). Sin markdown, sin comentarios fuera del SVG, sin explicación.
+Priorizá un diagrama legible y completo pero razonablemente compacto (evitá decenas de nodos redundantes o SVG enormes que demoren la generación).`;
 
 export function buildUserFlowSvgUserPrompt(input: {
     specMarkdown: string;

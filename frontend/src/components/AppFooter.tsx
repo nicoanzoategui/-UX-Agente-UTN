@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getApiBaseUrl } from '../lib/runtimeEnv';
 import { api } from '../services/api';
 
 export default function AppFooter() {
@@ -57,7 +58,7 @@ export default function AppFooter() {
                         <span className="mx-1.5 text-gray-300">·</span>
                         <span>
                             No se pudo contactar la API (
-                            {import.meta.env.VITE_API_URL || 'http://localhost:3001'})
+                            {getApiBaseUrl()})
                         </span>
                     </>
                 )}

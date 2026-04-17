@@ -1127,23 +1127,71 @@ function escapeSvgText(s: string): string {
         .replace(/'/g, '&apos;');
 }
 
+/** Parte texto en líneas para <tspan>; el SVG no hace wrap automático. */
+function wrapSvgLabelLines(text: string, maxCharsPerLine: number, maxLines: number): string[] {
+    const words = text
+        .trim()
+        .slice(0, 280)
+        .split(/\s+/)
+        .filter(Boolean);
+    if (words.length === 0) return ['—'];
+    const lines: string[] = [];
+    let line = '';
+    for (const w of words) {
+        if (lines.length >= maxLines) break;
+        const next = line ? `${line} ${w}` : w;
+        if (next.length <= maxCharsPerLine) {
+            line = next;
+        } else {
+            if (line) {
+                lines.push(line);
+                line = '';
+            }
+            if (lines.length >= maxLines) break;
+            if (w.length <= maxCharsPerLine) {
+                line = w;
+            } else {
+                lines.push(`${w.slice(0, Math.max(1, maxCharsPerLine - 1))}…`);
+            }
+        }
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    if (lines.length === 0) return ['—'];
+    return lines.slice(0, maxLines);
+}
+
+function buildCenteredMultilineNodeText(cx: number, yBox: number, boxH: number, lines: string[], lineHeight: number): string {
+    const fs = 13;
+    const block = lines.length * lineHeight;
+    const y0 = yBox + (boxH - block) / 2 + fs * 0.35;
+    const inner = lines
+        .map((ln, i) => `<tspan x="${cx}" y="${y0 + i * lineHeight}">${escapeSvgText(ln)}</tspan>`)
+        .join('');
+    return `<text text-anchor="middle" font-size="${fs}" fill="#0f172a" font-family="system-ui,sans-serif">${inner}</text>`;
+}
+
 /** SVG mínimo en línea cuando Gemini no devuelve markup válido. */
 function buildFallbackUserFlowSvg(solution: IdeationSolutionDto): string {
     const steps = solution.flowSteps.filter((x) => x.trim().length > 0);
     const labels = steps.length > 0 ? steps : ['Paso sin definir'];
     const n = labels.length;
-    const boxW = 220;
-    const gap = 40;
-    const startX = 32;
-    const yBox = 72;
-    const boxH = 76;
+    const boxW = 228;
+    const gap = 44;
+    const startX = 40;
+    const yBox = 78;
+    const lineHeight = 18;
+    const maxChars = 26;
+    const maxLines = 5;
+    const lineSets = labels.map((lb) => wrapSvgLabelLines(lb, maxChars, maxLines));
+    const maxLineCount = Math.max(1, ...lineSets.map((l) => l.length));
+    const boxH = Math.min(140, Math.max(80, 24 + maxLineCount * lineHeight));
     const vbW = startX * 2 + n * boxW + Math.max(0, n - 1) * gap;
-    const vbH = 220;
+    const vbH = Math.max(240, yBox + boxH + 56);
     const title = escapeSvgText(solution.title.trim().slice(0, 100) || 'User flow');
 
     const markerId = `arrow-uf-fb-${Math.random().toString(36).slice(2, 9)}`;
     const parts: string[] = [
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vbW} ${vbH}" width="${vbW}" height="${vbH}">`,
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vbW} ${vbH}" width="${vbW}" height="${vbH}" preserveAspectRatio="xMinYMin meet">`,
         '<defs>',
         `<marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#475569"/></marker>`,
         '</defs>',
@@ -1154,10 +1202,11 @@ function buildFallbackUserFlowSvg(solution: IdeationSolutionDto): string {
 
     for (let i = 0; i < n; i++) {
         const x = startX + i * (boxW + gap);
-        const label = escapeSvgText(labels[i].trim().slice(0, 120));
+        const cx = x + boxW / 2;
+        const lines = lineSets[i] ?? ['—'];
         parts.push(
             `<rect x="${x}" y="${yBox}" width="${boxW}" height="${boxH}" rx="12" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>`,
-            `<text x="${x + boxW / 2}" y="${yBox + boxH / 2 + 4}" text-anchor="middle" font-size="13" fill="#0f172a" font-family="system-ui,sans-serif">${label}</text>`
+            buildCenteredMultilineNodeText(cx, yBox, boxH, lines, lineHeight)
         );
         if (i < n - 1) {
             const x1 = x + boxW;
@@ -1195,7 +1244,8 @@ export async function generateUserFlow(
         feedback: opts?.feedback,
         priorSvg: opts?.priorSvg,
     });
-    const raw = await generateTextWithRetries(USER_FLOW_SVG_SYSTEM, user, 0.35, { maxOutputTokens: 16_384 });
+    /** 8k suele alcanzar para un SVG; 16k alentaba la respuesta sin beneficio claro. */
+    const raw = await generateTextWithRetries(USER_FLOW_SVG_SYSTEM, user, 0.35, { maxOutputTokens: 8192 });
     const logPreview = 5000;
     console.log(
         '[generateUserFlow] respuesta Gemini (preview, primeros',
@@ -1212,7 +1262,7 @@ export async function generateUserFlow(
         console.warn('[generateUserFlow] extractFirstSvg (1.er intento):', (e1 as Error)?.message ?? e1);
         const repair =
             `${user}\n\n## Corrección requerida\nLa respuesta anterior no incluyó un único SVG válido (exactamente un bloque desde <svg hasta </svg>). Emití de nuevo **solo** ese fragmento, sin markdown ni texto fuera del SVG.`;
-        const raw2 = await generateTextWithRetries(USER_FLOW_SVG_SYSTEM, repair, 0.2, { maxOutputTokens: 16_384 });
+        const raw2 = await generateTextWithRetries(USER_FLOW_SVG_SYSTEM, repair, 0.2, { maxOutputTokens: 8192 });
         console.log(
             '[generateUserFlow] respuesta Gemini 2º intento (preview, primeros',
             logPreview,
