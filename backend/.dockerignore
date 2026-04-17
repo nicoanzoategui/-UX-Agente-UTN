@@ -1,0 +1,9 @@
+node_modules
+dist
+local.db
+.env
+.env.*
+*.md
+.git
+coverage
+scripts
