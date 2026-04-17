@@ -135,8 +135,8 @@ async function start() {
     try {
         await initDatabase();
 
-        const server = app.listen(config.PORT, () => {
-            console.log(`✓ Framework UX backend on port ${config.PORT}`);
+        const server = app.listen(Number(config.PORT), '0.0.0.0', () => {
+            console.log(`✓ Framework UX backend on 0.0.0.0:${config.PORT}`);
         });
 
         const shutdown = (signal: string) => {
