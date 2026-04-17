@@ -44,7 +44,7 @@ export default function HandoffPage() {
 
     useEffect(() => {
         const w = loadWorkflow();
-        if (!w?.tsxMuiApproved) return;
+        if (!w?.hifiWireframesApproved) return;
         if (markedHandoffVisit.current) return;
         markedHandoffVisit.current = true;
         patchWorkflow({ handoffVisited: true });
@@ -54,11 +54,9 @@ export default function HandoffPage() {
         return <Navigate to="/ideacion" replace />;
     }
 
-    if (!wf.tsxMuiApproved) {
+    if (!wf.hifiWireframesApproved) {
         if (!wf.userFlowApproved) return <Navigate to="/user-flow" replace />;
-        if (!wf.hifiWireframesApproved) return <Navigate to="/wireframes-hifi" replace />;
-        if (!wf.figmaApproved) return <Navigate to="/figma" replace />;
-        return <Navigate to="/codigo-mui" replace />;
+        return <Navigate to="/prototipado" replace />;
     }
 
     const sol = wf.ideationSolutions[wf.selectedSolutionIndex - 1];
@@ -89,8 +87,9 @@ export default function HandoffPage() {
         const tsxFinal = w.tsxFinalScreens?.filter((x) => x.trim()) ?? [];
         const tsxLegacy = w.tsxMuiScreens?.filter((x) => x.trim()) ?? [];
         const tsxForZip = tsxFinal.length > 0 ? tsxFinal : tsxLegacy;
-        if (tsxForZip.length === 0) {
-            toast('No hay código TSX generado para armar el handoff.', 'error');
+        const hifiHtml = w.hifiWireframesHtml?.filter((x) => x.trim()) ?? [];
+        if (tsxForZip.length === 0 && hifiHtml.length === 0) {
+            toast('No hay prototipos HTML ni código TSX para armar el handoff.', 'error');
             return;
         }
         const idx = w.selectedSolutionIndex;
@@ -103,9 +102,10 @@ export default function HandoffPage() {
                 initiativeName: w.initiativeName,
                 analysis: w.analysis,
                 userFlowSvg: w.userFlowSvg ?? '',
-                hifiWireframesHtml: w.hifiWireframesHtml ?? [],
+                hifiWireframesHtml: hifiHtml.length > 0 ? hifiHtml : w.hifiWireframesHtml ?? [],
                 tsxFinalScreens: tsxFinal.length > 0 ? tsxFinal : undefined,
-                tsxMuiScreens: tsxFinal.length > 0 ? undefined : tsxLegacy.length > 0 ? tsxLegacy : undefined,
+                tsxMuiScreens:
+                    tsxFinal.length > 0 ? undefined : tsxLegacy.length > 0 ? tsxLegacy : undefined,
                 tsxSource: tsxFinal.length > 0 ? 'figma' : 'wireframes',
                 figmaFileUrl: w.figmaFileUrl,
                 figmaScreensMeta: w.figmaScreensMeta,
@@ -139,12 +139,12 @@ export default function HandoffPage() {
 
     return (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
-            <ProgressBar currentStep={7} />
+            <ProgressBar currentStep={5} />
 
             <div className="bg-white rounded-lg shadow-sm p-8 fade-in">
                 <div className="mb-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h1 className="text-3xl font-bold text-gray-900">7. Handoff colaborativo</h1>
+                        <h1 className="text-3xl font-bold text-gray-900">5. Handoff colaborativo</h1>
                         <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
                             ✓ Documentación generada
                         </span>
@@ -195,8 +195,10 @@ export default function HandoffPage() {
                             <p className="text-sm text-purple-100 max-w-xl">
                                 ZIP listo con README, tema MUI, rutas React Router, carpeta{' '}
                                 <code className="text-xs bg-white/15 px-1 rounded">screens/</code>,{' '}
-                                <code className="text-xs bg-white/15 px-1 rounded">api/endpoints.ts</code>, user flow en SVG
-                                y, si aplica, <code className="text-xs bg-white/15 px-1 rounded">figma-metadata.json</code>.
+                                <code className="text-xs bg-white/15 px-1 rounded">screens-html/</code> (HTML del
+                                prototipado), <code className="text-xs bg-white/15 px-1 rounded">api/endpoints.ts</code>,
+                                user flow en SVG y, si aplica,{' '}
+                                <code className="text-xs bg-white/15 px-1 rounded">figma-metadata.json</code>.
                             </p>
                         </div>
                         <button
@@ -483,10 +485,10 @@ export default function HandoffPage() {
 
                 <div className="pt-6 flex flex-col sm:flex-row gap-4">
                     <Link
-                        to="/codigo-mui"
+                        to="/prototipado"
                         className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition-all text-center text-gray-900 ux-focus"
                     >
-                        ← Volver a código TSX
+                        ← Volver a Prototipado
                     </Link>
                     <button
                         type="button"

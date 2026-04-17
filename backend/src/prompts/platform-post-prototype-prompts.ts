@@ -1,4 +1,4 @@
-/** Post-ideación: user flow SVG, wireframes HiFi full-flow, código TSX MUI por pantalla. */
+/** Post-ideación: user flow SVG, prototipado HTML full-flow, código TSX MUI por pantalla (legado). */
 
 export const USER_FLOW_SVG_SYSTEM = `Sos un UX Lead senior. Generás UN único diagrama de USER FLOW como SVG válido (sin <script>, sin enlaces externos, sin <foreignObject> con HTML embebido).
 
@@ -70,16 +70,17 @@ export function buildUserFlowChatUserPrompt(input: {
     );
 }
 
-export const FULL_FLOW_HIFI_HTML_SYSTEM = `Sos un diseñador UI senior. Generás wireframes de ALTA FIDELIDAD en HTML5 para TODAS las pantallas del flujo en UNA sola respuesta.
-Guía visual: inspirate en Material UI v5 (densidad cómoda, tipografía sistema, superficies elevadas sutiles, botones contenidos, campos outlined).
+export const FULL_FLOW_HIFI_HTML_SYSTEM = `Sos un diseñador UI. Generás wireframes de prototipado en HTML PURO Y LIMPIO para TODAS las pantallas del flujo en UNA sola respuesta.
+Estilo: HTML básico y simple, sin frameworks complejos. Estructura clara y legible.
 Formato obligatorio: separá cada pantalla con una línea exactamente así, donde N va de 1 al número de pasos del flujo (uno por paso):
 ---SCREEN_N---
 Inmediatamente después, el documento HTML de esa pantalla (un solo archivo por pantalla, sin explicaciones entre separadores).
 Cada HTML:
 - viewport desktop 1280px de referencia; contenedor principal max-width 1200px centrado.
 - <!DOCTYPE html>, html lang="es", head con charset utf-8, viewport meta, title con nombre de pantalla.
-- Usá Tailwind CDN en head: <script src="https://cdn.tailwindcss.com"></script> y clases utility para lograr look MUI-like (no importes @mui real).
-- Sin JavaScript salvo el script de Tailwind CDN.
+- Usá Tailwind CDN en head: <script src="https://cdn.tailwindcss.com"></script> para estilos básicos.
+- Sin JavaScript complejo salvo el script de Tailwind CDN.
+- Diseño simple y limpio: enfoque en estructura y contenido, no en detalles visuales complejos.
 - Contenido fiel al spec y al paso correspondiente del flujo en el JSON.
 - No incluyas texto fuera de los bloques HTML ni resúmenes finales.
 Salida: únicamente la secuencia ---SCREEN_1--- ... ---SCREEN_N--- con sus HTMLs.`;

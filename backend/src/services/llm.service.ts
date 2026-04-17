@@ -1651,6 +1651,16 @@ export async function generateHandoffZip(input: HandoffZipInput): Promise<Buffer
     }
     apiFolder.file('endpoints.ts', endpointsTs);
 
+    const hifiHtml = (input.hifiHtmlScreens ?? []).filter((x) => typeof x === 'string' && x.trim().length > 0);
+    if (hifiHtml.length > 0) {
+        const htmlFolder = root.folder('screens-html');
+        if (htmlFolder) {
+            for (let i = 0; i < hifiHtml.length; i++) {
+                htmlFolder.file(`Pantalla${i + 1}.html`, hifiHtml[i]);
+            }
+        }
+    }
+
     if (input.figmaFileUrl?.trim() || (input.figmaScreensMeta && input.figmaScreensMeta.length > 0)) {
         root.file(
             'figma-metadata.json',

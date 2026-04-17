@@ -12,9 +12,7 @@ import UxAgentAnalysisPage from './pages/UxAgentAnalysisPage';
 import IdeacionPage from './pages/IdeacionPage';
 import SolutionIterationPage from './pages/SolutionIterationPage';
 import UserFlowPage from './pages/UserFlowPage';
-import WireframesHiFiPage from './pages/WireframesHiFiPage';
-import FigmaDesignPage from './pages/FigmaDesignPage';
-import CodigoMuiPage from './pages/CodigoMuiPage';
+import PrototipadoPage from './pages/PrototipadoPage';
 import HandoffPage from './pages/HandoffPage';
 import ProjectSummaryPage from './pages/ProjectSummaryPage';
 
@@ -65,9 +63,7 @@ function AppRoutes() {
                         <Route path="ideacion" element={<IdeacionPage />} />
                         <Route path="ideacion/iterar/:solutionIndex" element={<SolutionIterationPage />} />
                         <Route path="user-flow" element={<UserFlowPage />} />
-                        <Route path="wireframes-hifi" element={<WireframesHiFiPage />} />
-                        <Route path="figma" element={<FigmaDesignPage />} />
-                        <Route path="codigo-mui" element={<CodigoMuiPage />} />
+                        <Route path="prototipado" element={<PrototipadoPage />} />
                         <Route path="handoff" element={<HandoffPage />} />
                         <Route path="resumen" element={<ProjectSummaryPage />} />
                     </Route>

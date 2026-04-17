@@ -197,15 +197,15 @@ export default function UserFlowPage() {
                 hifiWireframesRaw: raw,
                 hifiWireframesHtml: parts,
             });
-            toast('User flow aprobado. Los wireframes HiFi ya están listos.', 'success');
-            navigate('/wireframes-hifi');
+            toast('User flow aprobado. Los prototipos HTML ya están listos.', 'success');
+            navigate('/prototipado');
         } catch (e) {
             const msg =
                 e instanceof ApiError
                     ? e.message
                     : e instanceof Error
                       ? e.message
-                      : 'No se pudieron generar los wireframes HiFi.';
+                      : 'No se pudieron generar los prototipos HTML.';
             toast(msg, 'error');
         } finally {
             setApproveBusy(false);
@@ -219,7 +219,7 @@ export default function UserFlowPage() {
     }
 
     if (wf.userFlowApproved) {
-        return <Navigate to="/wireframes-hifi" replace />;
+        return <Navigate to="/prototipado" replace />;
     }
 
     return (
@@ -348,8 +348,8 @@ export default function UserFlowPage() {
                 </div>
 
                 <p className="text-xs text-gray-500 mb-3">
-                    Al continuar generamos los wireframes HiFi de todas las pantallas; suele tardar uno o dos minutos.
-                    En el siguiente paso ya los vas a ver listos.
+                    Al continuar generamos los prototipos HTML de todas las pantallas; suele tardar uno o dos minutos. En el
+                    siguiente paso ya los vas a ver listos.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                     <Link
@@ -364,7 +364,7 @@ export default function UserFlowPage() {
                         onClick={() => void approve()}
                         className="flex-1 gradient-bg text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 ux-focus disabled:opacity-50"
                     >
-                        {approveBusy ? 'Generando wireframes HiFi…' : 'Aprobar user flow y continuar →'}
+                        {approveBusy ? 'Generando prototipos HTML…' : 'Aprobar user flow y continuar a Prototipado →'}
                     </button>
                 </div>
             </div>

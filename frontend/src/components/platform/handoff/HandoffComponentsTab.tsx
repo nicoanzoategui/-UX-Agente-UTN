@@ -105,8 +105,8 @@ export default function HandoffComponentsTab({
                 Patrones y piezas sugeridas
             </h3>
             <p className="text-gray-600 mb-6">
-                Derivado del análisis y de la solución documentada. Completá el paso «Código TSX» para ver aquí los componentes MUI
-                generados.
+                Derivado del análisis y de la solución documentada. Si generaste código TSX en otro flujo, aparecerá aquí;
+                si no, usá la pestaña Pantallas para los HTML de prototipado.
             </p>
 
             {items.length === 0 ? (

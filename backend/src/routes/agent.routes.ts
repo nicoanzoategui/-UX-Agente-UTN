@@ -833,10 +833,17 @@ router.post('/generate-handoff-zip', async (req, res) => {
     const tsxMuiScreens = Array.isArray(rawTsx)
         ? (rawTsx as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
         : [];
-    const tsxForZip = tsxFinalScreens.length > 0 ? tsxFinalScreens : tsxMuiScreens;
+    let tsxForZip = tsxFinalScreens.length > 0 ? tsxFinalScreens : tsxMuiScreens;
+    if (tsxForZip.length === 0 && hifiWireframesHtml.length > 0) {
+        tsxForZip = hifiWireframesHtml.map(
+            (_, i) =>
+                `/** Pantalla ${i + 1}: prototipo HTML en screens-html/Pantalla${i + 1}.html */\nexport default function Screen${i + 1}() {\n  return null;\n}\n`
+        );
+    }
     if (tsxForZip.length === 0) {
         return res.status(400).json({
-            error: 'Enviá tsxFinalScreens o tsxMuiScreens como array de strings no vacío.',
+            error:
+                'Enviá tsxFinalScreens o tsxMuiScreens, o al menos hifiWireframesHtml con pantallas HTML para el handoff.',
         });
     }
     const tsxSource: 'figma' | 'wireframes' =

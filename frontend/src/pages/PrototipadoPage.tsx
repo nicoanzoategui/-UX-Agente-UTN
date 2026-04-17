@@ -6,7 +6,7 @@ import { splitPlatformDelimitedBlocks } from '../lib/platformDelimited';
 import { loadWorkflow, patchWorkflow, type WorkflowSession } from '../lib/workflowSession';
 import { api, ApiError } from '../services/api';
 
-export default function WireframesHiFiPage() {
+export default function PrototipadoPage() {
     const navigate = useNavigate();
     const toast = useToast();
     const [wf, setWf] = useState<WorkflowSession | null>(null);
@@ -16,10 +16,11 @@ export default function WireframesHiFiPage() {
 
     const idx = wf?.selectedSolutionIndex;
     const solution = wf && idx != null && idx >= 1 && idx <= 3 ? wf.ideationSolutions?.[idx - 1] : undefined;
-    const hifi = wf?.hifiWireframesHtml;
+    /** Alias de UI; el backend sigue usando `hifiWireframesHtml` en sesión. */
+    const prototypesHtml = wf?.hifiWireframesHtml;
 
     useEffect(() => {
-        document.title = 'Wireframes HiFi · UX Agent Platform';
+        document.title = 'Prototipado · UX Agent Platform';
         return () => {
             document.title = 'UX Agent Platform';
         };
@@ -61,10 +62,10 @@ export default function WireframesHiFiPage() {
                 }
                 patchWorkflow({ hifiWireframesRaw: raw, hifiWireframesHtml: parts });
                 setWf(loadWorkflow());
-                toast(`Se generaron ${parts.length} wireframe(s) HiFi.`, 'success');
+                toast(`Se generaron ${parts.length} prototipo(s) HTML.`, 'success');
             } catch (e) {
                 if (cancelled) return;
-                const msg = e instanceof ApiError ? e.message : 'Error al generar wireframes HiFi.';
+                const msg = e instanceof ApiError ? e.message : 'Error al generar prototipos.';
                 toast(msg, 'error');
             } finally {
                 if (!cancelled) setBusy(false);
@@ -76,9 +77,9 @@ export default function WireframesHiFiPage() {
     }, [wf]);
 
     useEffect(() => {
-        const n = hifi?.length ?? 0;
+        const n = prototypesHtml?.length ?? 0;
         if (n > 0) setScreen((s) => Math.min(s, n - 1));
-    }, [hifi?.length]);
+    }, [prototypesHtml?.length]);
 
     async function generate() {
         if (!wf || !solution || !wf.analysis) return;
@@ -99,9 +100,9 @@ export default function WireframesHiFiPage() {
             patchWorkflow({ hifiWireframesRaw: raw, hifiWireframesHtml: parts });
             setWf(loadWorkflow());
             setFeedback('');
-            toast(`Se generaron ${parts.length} wireframe(s) HiFi.`, 'success');
+            toast(`Se generaron ${parts.length} prototipo(s) HTML.`, 'success');
         } catch (e) {
-            const msg = e instanceof ApiError ? e.message : 'Error al generar wireframes HiFi.';
+            const msg = e instanceof ApiError ? e.message : 'Error al generar prototipos.';
             toast(msg, 'error');
         } finally {
             setBusy(false);
@@ -109,8 +110,8 @@ export default function WireframesHiFiPage() {
     }
 
     function approve() {
-        if (!hifi?.length) {
-            toast('Generá los wireframes antes de aprobar.', 'error');
+        if (!prototypesHtml?.length) {
+            toast('Generá los prototipos antes de aprobar.', 'error');
             return;
         }
         patchWorkflow({
@@ -121,8 +122,8 @@ export default function WireframesHiFiPage() {
             tsxMuiScreens: undefined,
             tsxMuiApproved: false,
         });
-        toast('Wireframes HiFi aprobados.', 'success');
-        navigate('/figma');
+        toast('Prototipos aprobados.', 'success');
+        navigate('/handoff');
     }
 
     if (!wf || !solution) {
@@ -132,10 +133,10 @@ export default function WireframesHiFiPage() {
     }
 
     if (wf.hifiWireframesApproved) {
-        return <Navigate to="/figma" replace />;
+        return <Navigate to="/handoff" replace />;
     }
 
-    const n = hifi?.length ?? 0;
+    const n = prototypesHtml?.length ?? 0;
 
     return (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
@@ -144,10 +145,10 @@ export default function WireframesHiFiPage() {
             <div className="bg-white rounded-lg shadow-sm p-8 fade-in">
                 <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">4. Wireframes alta fidelidad</h1>
+                        <h1 className="text-3xl font-bold text-gray-900">4. Prototipado</h1>
                         <p className="text-gray-600 mt-1">
-                            Pantallas en HTML desktop (estilo tipo MUI v5 vía Tailwind CDN). Suelen generarse al aprobar
-                            el user flow; podés regenerarlas acá si querés iterar.
+                            Pantallas en HTML (Tailwind CDN). Suelen generarse al aprobar el user flow; podés regenerarlas
+                            acá si querés iterar.
                         </p>
                     </div>
                 </div>
@@ -167,7 +168,7 @@ export default function WireframesHiFiPage() {
                         onClick={() => void generate()}
                         className="gradient-bg text-white px-6 py-2 rounded-lg font-semibold hover:opacity-90 ux-focus disabled:opacity-50"
                     >
-                        {busy ? 'Generando…' : n ? 'Regenerar wireframes HiFi' : 'Generar wireframes HiFi'}
+                        {busy ? 'Generando…' : n ? 'Regenerar prototipos' : 'Generar prototipos'}
                     </button>
                 </div>
 
@@ -175,9 +176,9 @@ export default function WireframesHiFiPage() {
                     <div className="border-2 border-gray-300 rounded-lg overflow-hidden mb-8">
                         <div className="bg-gray-100 p-4 max-h-[640px] overflow-y-auto">
                             <iframe
-                                title={`Wireframe HiFi ${screen + 1}`}
+                                title={`Prototipo ${screen + 1}`}
                                 className="w-full min-h-[520px] bg-white border border-gray-200 rounded"
-                                srcDoc={hifi![screen]}
+                                srcDoc={prototypesHtml![screen]}
                                 sandbox="allow-scripts allow-same-origin"
                             />
                         </div>
@@ -206,12 +207,12 @@ export default function WireframesHiFiPage() {
                 ) : busy ? (
                     <div className="flex flex-col items-center justify-center py-16 text-gray-600 text-sm gap-3 mb-8">
                         <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                        Generando wireframes HiFi…
+                        Generando prototipos HTML…
                     </div>
                 ) : (
                     <p className="text-sm text-gray-500 mb-8">
-                        No hay wireframes todavía. Usá «Generar wireframes HiFi» o volvé al paso anterior y aprobá de
-                        nuevo el user flow.
+                        No hay prototipos todavía. Usá «Generar prototipos» o volvé al paso anterior y aprobá de nuevo el
+                        user flow.
                     </p>
                 )}
 
@@ -228,7 +229,7 @@ export default function WireframesHiFiPage() {
                         onClick={approve}
                         className="flex-1 gradient-bg text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 ux-focus disabled:opacity-50"
                     >
-                        Aprobar wireframes y continuar a Figma →
+                        Aprobar prototipos y continuar a Handoff →
                     </button>
                 </div>
             </div>

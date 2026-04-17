@@ -53,11 +53,10 @@ export default function HandoffScreensTab({
         return (
             <div className="doc-content p-6 max-h-[640px] overflow-y-auto bg-white">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 pb-2 border-b-2 border-purple-600">
-                    Wireframes alta fidelidad
+                    Prototipado
                 </h3>
                 <p className="text-gray-600 mb-4 text-sm">
-                    Vista previa HTML (desktop) generada en el paso «Wireframes HiFi», alineada a MUI v5 como referencia
-                    visual.
+                    Vista previa HTML (desktop) generada en el paso «Prototipado» (Tailwind CDN).
                 </p>
                 {stepTitle ? (
                     <p className="text-sm font-medium text-gray-800 mb-2" title={stepTitle}>
@@ -67,7 +66,7 @@ export default function HandoffScreensTab({
                 <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
                     <div className="p-3 max-h-[520px] overflow-y-auto">
                         <iframe
-                            title={`Wireframe HiFi ${safe + 1}`}
+                            title={`Prototipo ${safe + 1}`}
                             className="w-full min-h-[480px] bg-white border border-gray-200 rounded"
                             srcDoc={hifi[safe]}
                             sandbox="allow-scripts allow-same-origin"
