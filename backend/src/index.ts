@@ -92,6 +92,11 @@ function productionCorsOrigin(origin: string | undefined, callback: (err: Error 
             callback(null, true);
             return;
         }
+        /** PaaS (new-feats): front y API son subdominios hermanos; si FRONTEND_URL no coincide al pie de la letra, el fetch falla sin CORS. */
+        if (protocol === 'https:' && hostname.endsWith('.new-feats.redtecnologica.org')) {
+            callback(null, true);
+            return;
+        }
     } catch {
         /* URL inválida */
     }
